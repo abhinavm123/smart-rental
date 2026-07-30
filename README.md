@@ -1,6 +1,6 @@
 # Smart Rental
 
-Smart Rental searches the car-rental section of the `booking-com18` API on RapidAPI. It runs the same trip search for each selected renter market, keeps the cheapest matching supplier/vehicle offer, and shows the price spread between markets.
+Smart Rental searches car-rental providers through a small provider-adapter layer. The included `booking-com18` adapter uses RapidAPI, runs the same trip search for each selected renter market, keeps the cheapest matching supplier/vehicle offer, and shows the price spread between markets.
 
 ## How it works
 
@@ -22,10 +22,11 @@ Smart Rental searches the car-rental section of the `booking-com18` API on Rapid
 Copy-Item .env.example .env
 ```
 
-3. Put your RapidAPI key in `.env`.
+3. Put your provider and RapidAPI key in `.env`.
 
 ```env
-RAPIDAPI_KEY=your_key_here
+RENTAL_PROVIDER=booking-com18
+RENTAL_API_KEY=your_key_here
 ADMIN_PASSWORD=use_a_long_unique_password_here
 ```
 
@@ -48,10 +49,29 @@ npm test
 ## Configuration
 
 ```env
-RAPIDAPI_KEY=your_key_here
+RENTAL_PROVIDER=booking-com18
+RENTAL_API_KEY=your_key_here
+RENTAL_API_HOST=booking-com18.p.rapidapi.com
+RENTAL_API_BASE_URL=https://booking-com18.p.rapidapi.com
+RENTAL_API_AUTOCOMPLETE_PATH=/car/auto-complete
+RENTAL_API_SEARCH_PATH=/car/search
+RENTAL_API_DETAIL_PATH=/car/detail
+RENTAL_API_PACKAGES_PATH=/car/packages
+RENTAL_API_BOOKING_SUMMARY_PATH=/car/booking-summary
 ADMIN_PASSWORD=use_a_long_unique_password_here
 PORT=3000
 ```
+
+`RAPIDAPI_KEY` remains supported as a backwards-compatible fallback. The `RENTAL_API_*_PATH` settings let you switch hosts or endpoint paths without code changes when the replacement API uses the same request and response format.
+
+## Changing rental APIs
+
+The browser and the main server use a provider-neutral quote format. Provider-specific request parameters and response mapping live in `providers/`.
+
+- If a replacement is compatible with `booking-com18`, update `RENTAL_API_HOST`, `RENTAL_API_BASE_URL`, the endpoint paths, and the key in `.env`.
+- If its JSON or search flow differs, copy the shape of `providers/booking-com18.js`, implement the provider contract, and register it in `providers/index.js`. Then switching between installed adapters only requires changing `RENTAL_PROVIDER`.
+
+Every adapter supplies its own configuration check, location search, pickup resolution, market search, search-key and offer extraction, offer normalization, and live quote-detail loading. This keeps authentication and API changes out of the website, saved-quote, comparison, admin, and security code.
 
 ## Admin dashboard
 

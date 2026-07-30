@@ -8,6 +8,8 @@ import {
   normalizeProviderOffer,
   normalizeQuoteDetails
 } from "./server.js";
+import { createBookingCom18Config } from "./providers/booking-com18.js";
+import { getRentalProvider, getRentalProviderIds } from "./providers/index.js";
 
 const trip = {
   location: "New York",
@@ -140,11 +142,38 @@ test("matches offers across countries and keeps the cheapest market", () => {
   assert.deepEqual(registeredQuote, {
     vehicleId: "vehicle-1",
     searchKey: "gb-key",
-    market: "gb"
+    market: "gb",
+    providerId: "booking-com18"
   });
   assert.deepEqual(result.meta.markets, ["us", "gb", "it"]);
   assert.equal(result.meta.sourceOfferCount, 3);
   assert.equal(result.meta.offerCount, 1);
+});
+
+test("selects a rental provider and supports compatible endpoint overrides", () => {
+  assert.deepEqual(getRentalProviderIds(), ["booking-com18"]);
+  assert.equal(getRentalProvider().id, "booking-com18");
+  assert.throws(
+    () => getRentalProvider("not-installed"),
+    /Unknown RENTAL_PROVIDER/
+  );
+
+  const config = createBookingCom18Config({
+    RENTAL_API_KEY: "example-key",
+    RENTAL_API_HOST: "cars.example.test",
+    RENTAL_API_BASE_URL: "https://cars.example.test/api/",
+    RENTAL_API_SEARCH_PATH: "search-rentals",
+    RENTAL_API_AUTOCOMPLETE_PATH: "locations"
+  });
+
+  assert.equal(config.apiKey, "example-key");
+  assert.equal(config.host, "cars.example.test");
+  assert.equal(config.endpoints.search, "https://cars.example.test/api/search-rentals");
+  assert.equal(config.endpoints.autocomplete, "https://cars.example.test/api/locations");
+  assert.equal(
+    config.endpoints.bookingSummary,
+    "https://cars.example.test/car/booking-summary"
+  );
 });
 
 test("normalizes repaired detail, packages and booking-summary responses", () => {
