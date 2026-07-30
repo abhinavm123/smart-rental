@@ -1,0 +1,15 @@
+{
+  "name": "smart-rental",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Country-market rental car price comparison using the Booking COM RapidAPI.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check app.js && node --check admin-server.js && node --check admin.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

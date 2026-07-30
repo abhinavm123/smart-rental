@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Smart Rental</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <div class="brand-row">
+          <div class="brand-mark" aria-hidden="true">S</div>
+          <div>
+            <h1>Smart Rental</h1>
+            <p>Search live rental cars and compare the cheapest useful options.</p>
+          </div>
+        </div>
+        <a class="admin-link" href="/admin">Admin</a>
+      </header>
+
+      <section class="search-panel" aria-label="Car rental search">
+        <form id="searchForm" class="search-form" autocomplete="off">
+          <label class="field location-field">
+            <span>Pickup location</span>
+            <input
+              id="locationInput"
+              type="search"
+              placeholder="Start typing a city, airport, or station"
+              autocomplete="off"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded="false"
+              aria-controls="locationSuggestions"
+            >
+            <div id="locationSuggestions" class="suggestions" role="listbox" hidden></div>
+          </label>
+
+          <div class="field-row">
+            <label class="field">
+              <span>Pickup date</span>
+              <input id="pickupDateInput" type="date">
+            </label>
+            <label class="field compact-field">
+              <span>Time</span>
+              <input id="pickupTimeInput" type="time" value="16:00">
+            </label>
+            <label class="field">
+              <span>Return date</span>
+              <input id="returnDateInput" type="date">
+            </label>
+            <label class="field compact-field">
+              <span>Time</span>
+              <input id="returnTimeInput" type="time" value="16:00">
+            </label>
+          </div>
+
+          <div class="field-row options-row">
+            <label class="field">
+              <span>Currency</span>
+              <select id="currencyInput">
+                <option value="USD">USD</option>
+                <option value="GBP" selected>GBP</option>
+                <option value="EUR">EUR</option>
+                <option value="AED">AED</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Max total</span>
+              <input id="maxPriceInput" type="number" min="25" step="25" placeholder="No limit">
+            </label>
+            <label class="field">
+              <span>Vehicle size</span>
+              <select id="vehicleSizeInput">
+                <option value="any" selected>Any size</option>
+                <option value="mini_economy">Mini / Economy</option>
+                <option value="compact">Compact</option>
+                <option value="intermediate_standard">Intermediate / Standard</option>
+                <option value="fullsize">Full-size</option>
+                <option value="suv_crossover">SUV / Crossover</option>
+                <option value="van">People carrier / Van</option>
+                <option value="premium_luxury">Premium / Luxury</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Transmission</span>
+              <select id="transmissionInput">
+                <option value="any" selected>Any</option>
+                <option value="automatic">Automatic</option>
+                <option value="manual">Manual</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Sort by</span>
+              <select id="sortInput">
+                <option value="total" selected>Lowest total</option>
+                <option value="deal">Best deal</option>
+                <option value="daily">Lowest daily rate</option>
+                <option value="rating">Supplier rating</option>
+              </select>
+            </label>
+          </div>
+
+          <fieldset class="toggle-group">
+            <legend>Only show</legend>
+            <label><input class="featureInput" type="checkbox" value="unlimited mileage"> Unlimited mileage</label>
+            <label><input class="featureInput" type="checkbox" value="free cancellation"> Free cancellation</label>
+          </fieldset>
+
+          <fieldset class="country-group">
+            <legend>Compare renter markets</legend>
+            <label><input class="countryInput" type="checkbox" value="gb" checked> UK</label>
+            <label><input class="countryInput" type="checkbox" value="us"> US</label>
+            <label><input class="countryInput" type="checkbox" value="it"> Italy</label>
+            <label><input class="countryInput" type="checkbox" value="de"> Germany</label>
+            <label><input class="countryInput" type="checkbox" value="fr"> France</label>
+            <label><input class="countryInput" type="checkbox" value="es"> Spain</label>
+            <label><input class="countryInput" type="checkbox" value="ca"> Canada</label>
+          </fieldset>
+
+          <div class="search-actions">
+            <button id="fetchApiButton" class="primary-button" type="submit">Search live prices</button>
+            <p id="apiStatus" class="status">Choose a location and trip dates to start.</p>
+          </div>
+        </form>
+      </section>
+
+      <section class="results-section" aria-label="Car rental results">
+        <div class="results-header">
+          <div>
+            <div class="meta-row">
+              <span id="sourceLabel" class="pill">Ready</span>
+              <span id="tripLengthLabel" class="pill">Trip dates</span>
+              <span id="resultCount" class="pill">0 cars</span>
+            </div>
+            <h2>Cheapest matching cars</h2>
+            <p id="insightText">Live results will appear here after search.</p>
+          </div>
+          <div class="results-actions">
+            <button id="clearFiltersButton" class="ghost-button" type="button" hidden>Clear filters</button>
+            <button id="savedOnlyButton" class="ghost-button" type="button" aria-pressed="false">Saved only</button>
+          </div>
+        </div>
+
+        <div id="listings" class="listings"></div>
+        <p id="emptyState" class="empty-state">Search a pickup location to see live rental cars.</p>
+      </section>
+    </main>
+
+    <dialog id="detailDialog" class="detail-dialog">
+      <div class="detail-shell">
+        <div class="detail-header">
+          <div>
+            <span id="detailEyebrow" class="pill">Car details</span>
+            <h3 id="detailTitle">Rental car</h3>
+          </div>
+          <button id="detailCloseButton" class="icon-button" type="button" aria-label="Close details">x</button>
+        </div>
+        <div id="detailBody" class="detail-body"></div>
+      </div>
+    </dialog>
+
+    <script src="app.js"></script>
+  </body>
+</html>
