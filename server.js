@@ -4,7 +4,6 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createAdminService } from "./admin-server.js";
 import { bookingCom18Provider } from "./providers/booking-com18.js";
 import { getRentalProvider } from "./providers/index.js";
 
@@ -15,44 +14,27 @@ export {
 
 const root = resolve(fileURLToPath(new URL(".", import.meta.url)));
 const maxOffersPerMarket = 250;
+const maxRenterMarkets = 7;
 const quoteLifetimeMs = 30 * 60 * 1000;
 const maxCachedQuotes = 2000;
 const quoteCache = new Map();
 const locationCacheLifetimeMs = 30 * 60 * 1000;
 const maxCachedLocationQueries = 100;
 const locationSuggestionCache = new Map();
-const defaultAdminService = createAdminService({
-  dataFile: join(root, ".data", "admin.json")
-});
-
 const staticAssets = new Map([
   ["/", { file: "index.html", type: "text/html; charset=utf-8" }],
   ["/index.html", { file: "index.html", type: "text/html; charset=utf-8" }],
   ["/styles.css", { file: "styles.css", type: "text/css; charset=utf-8" }],
-  ["/app.js", { file: "app.js", type: "text/javascript; charset=utf-8" }],
-  ["/admin", { file: "admin.html", type: "text/html; charset=utf-8" }],
-  ["/admin.html", { file: "admin.html", type: "text/html; charset=utf-8" }],
-  ["/admin.css", { file: "admin.css", type: "text/css; charset=utf-8" }],
-  ["/admin.js", { file: "admin.js", type: "text/javascript; charset=utf-8" }]
+  ["/app.js", { file: "app.js", type: "text/javascript; charset=utf-8" }]
 ]);
 
-export function createAppServer({ adminService = defaultAdminService } = {}) {
+export function createAppServer() {
   return createServer(async (request, response) => {
     try {
       const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
 
-      if (url.pathname.startsWith("/api/admin/")) {
-        await handleAdminRequest(request, response, url, adminService);
-        return;
-      }
-
-      if (request.method === "POST" && url.pathname === "/api/events") {
-        await handlePublicEventRequest(request, response, adminService);
-        return;
-      }
-
       if (request.method === "POST" && url.pathname === "/api/cars") {
-        await handleCarsRequest(request, response, adminService);
+        await handleCarsRequest(request, response);
         return;
       }
 
@@ -65,7 +47,7 @@ export function createAppServer({ adminService = defaultAdminService } = {}) {
         ? url.pathname.match(/^\/api\/quotes\/([a-f0-9]{24})$/)
         : null;
       if (quoteMatch) {
-        await handleQuoteDetailsRequest(quoteMatch[1], response, adminService);
+        await handleQuoteDetailsRequest(quoteMatch[1], response);
         return;
       }
 
@@ -121,106 +103,6 @@ async function serveStatic(pathname, response) {
   } catch {
     sendJson(response, 404, { error: "Not found" });
   }
-}
-
-async function handleAdminRequest(request, response, url, adminService) {
-  const clientId = getClientId(request);
-
-  if (request.method === "POST" && url.pathname === "/api/admin/login") {
-    const body = await readJson(request);
-    const result = adminService.login(body.password, clientId);
-    if (result.status !== 200) {
-      sendJson(response, result.status, { error: result.error });
-      return;
-    }
-    sendJson(response, 200, {
-      csrfToken: result.csrfToken,
-      expiresAt: new Date(result.expiresAt).toISOString()
-    }, {
-      "Set-Cookie": createSessionCookie(result.token, request)
-    });
-    return;
-  }
-
-  const session = adminService.authenticate(request);
-  if (!session) {
-    sendJson(response, 401, { error: "Admin authentication is required." });
-    return;
-  }
-
-  if (request.method === "GET" && url.pathname === "/api/admin/session") {
-    sendJson(response, 200, {
-      csrfToken: session.csrfToken,
-      expiresAt: new Date(session.expiresAt).toISOString()
-    });
-    return;
-  }
-
-  if (["POST", "PUT", "PATCH", "DELETE"].includes(request.method || "")) {
-    if (!isSameOriginRequest(request) || request.headers["x-csrf-token"] !== session.csrfToken) {
-      sendJson(response, 403, { error: "The admin security token is invalid." });
-      return;
-    }
-  }
-
-  if (request.method === "POST" && url.pathname === "/api/admin/logout") {
-    adminService.logout(session.token, clientId);
-    sendJson(response, 200, { status: "signed_out" }, {
-      "Set-Cookie": "admin_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0"
-    });
-    return;
-  }
-
-  if (request.method === "GET" && url.pathname === "/api/admin/dashboard") {
-    sendJson(response, 200, await adminService.getDashboard());
-    return;
-  }
-
-  if (request.method === "POST" && url.pathname === "/api/admin/transactions") {
-    try {
-      const transaction = await adminService.addTransaction(await readJson(request), clientId);
-      sendJson(response, 201, { transaction });
-    } catch (error) {
-      sendJson(response, 400, { error: error.message || "Invalid transaction." });
-    }
-    return;
-  }
-
-  const transactionMatch = request.method === "DELETE"
-    ? url.pathname.match(/^\/api\/admin\/transactions\/([a-f0-9-]{36})$/)
-    : null;
-  if (transactionMatch) {
-    const deleted = await adminService.deleteTransaction(transactionMatch[1], clientId);
-    sendJson(response, deleted ? 200 : 404, deleted ? { status: "deleted" } : { error: "Transaction not found." });
-    return;
-  }
-
-  sendJson(response, 404, { error: "Admin endpoint not found." });
-}
-
-async function handlePublicEventRequest(request, response, adminService) {
-  const body = await readJson(request);
-  const accepted = adminService.recordPublicEvent(String(body.type || ""), body.metadata);
-  sendJson(response, accepted ? 202 : 400, accepted ? { status: "accepted" } : { error: "Unsupported event type." });
-}
-
-function createSessionCookie(token, request) {
-  const secure = request.headers["x-forwarded-proto"] === "https" ? "; Secure" : "";
-  return `admin_session=${encodeURIComponent(token)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${secure}`;
-}
-
-function isSameOriginRequest(request) {
-  const origin = String(request.headers.origin || "");
-  if (!origin) return true;
-  try {
-    return new URL(origin).host === request.headers.host;
-  } catch {
-    return false;
-  }
-}
-
-function getClientId(request) {
-  return String(request.socket?.remoteAddress || "unknown");
 }
 
 async function handleLocationSuggestionsRequest(url, response) {
@@ -287,7 +169,7 @@ function pruneLocationSuggestionCache(now) {
   }
 }
 
-async function handleCarsRequest(request, response, adminService) {
+async function handleCarsRequest(request, response) {
   const body = await readJson(request);
   const validationError = validateSearchBody(body);
   if (validationError) {
@@ -305,14 +187,15 @@ async function handleCarsRequest(request, response, adminService) {
   }
 
   let pickupId;
+  let dropOffId = "";
   try {
-    pickupId = await provider.resolvePickupId(body, config);
+    [pickupId, dropOffId] = await Promise.all([
+      provider.resolvePickupId(body, config),
+      body.differentDropoff
+        ? provider.resolveDropOffId(body, config)
+        : Promise.resolve("")
+    ]);
   } catch (error) {
-    adminService.recordEvent("search_failed", {
-      location: body.location,
-      markets: getRequestedMarkets(body).length,
-      currency: normalizeCurrency(body.currency)
-    });
     sendJson(response, 502, { error: error.message });
     return;
   }
@@ -321,6 +204,7 @@ async function handleCarsRequest(request, response, adminService) {
   const settled = await Promise.allSettled(
     markets.map((market) => provider.searchCars({
       pickupId,
+      dropOffId,
       body,
       market,
       config
@@ -336,12 +220,6 @@ async function handleCarsRequest(request, response, adminService) {
   });
 
   if (!successes.length) {
-    adminService.recordEvent("search_failed", {
-      location: body.location,
-      markets: markets.length,
-      failures: failures.length,
-      currency: normalizeCurrency(body.currency)
-    });
     sendJson(response, 502, {
       error: "The rental provider did not return usable results for any selected market.",
       failures
@@ -349,21 +227,20 @@ async function handleCarsRequest(request, response, adminService) {
     return;
   }
 
-  const result = combineMarketResults(successes, failures, body, registerQuote, provider);
-  adminService.recordEvent("search_completed", {
-    location: body.location,
-    markets: markets.length,
-    offers: result.offers.length,
-    failures: failures.length,
-    currency: normalizeCurrency(body.currency)
-  });
+  const result = combineMarketResults(
+    successes,
+    failures,
+    { ...body, pickupId, dropOffId },
+    registerQuote,
+    provider,
+    config
+  );
   sendJson(response, 200, result);
 }
 
-async function handleQuoteDetailsRequest(quoteId, response, adminService) {
+async function handleQuoteDetailsRequest(quoteId, response) {
   const quote = getQuote(quoteId);
   if (!quote) {
-    adminService.recordEvent("quote_review_failed");
     sendJson(response, 404, { error: "This quote has expired. Run the search again for fresh details." });
     return;
   }
@@ -380,10 +257,8 @@ async function handleQuoteDetailsRequest(quoteId, response, adminService) {
   try {
     const details = quote.details || await loadQuoteDetails(quote, provider, config);
     quote.details = details;
-    adminService.recordEvent("quote_reviewed");
     sendJson(response, 200, details);
   } catch {
-    adminService.recordEvent("quote_review_failed");
     sendJson(response, 502, {
       error: "Additional quote details are unavailable for this vehicle. The search price and basic terms are still shown below."
     });
@@ -392,6 +267,16 @@ async function handleQuoteDetailsRequest(quoteId, response, adminService) {
 
 function validateSearchBody(body) {
   if (!body.location && !body.pickupId) return "A pickup location is required.";
+  if (body.differentDropoff && !body.dropOffLocation && !body.dropOffId) {
+    return "A drop-off location is required when returning the car somewhere else.";
+  }
+  if (body.driverAge === undefined || body.driverAge === null || body.driverAge === "") {
+    return "Driver age is required.";
+  }
+  const driverAge = Number(body.driverAge);
+  if (!Number.isInteger(driverAge) || driverAge < 18 || driverAge > 99) {
+    return "Driver age must be between 18 and 99.";
+  }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(body.pickupDate || ""))) return "A valid pickup date is required.";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(body.returnDate || ""))) return "A valid return date is required.";
   if (!/^\d{2}:\d{2}$/.test(String(body.pickupTime || ""))) return "A valid pickup time is required.";
@@ -419,7 +304,7 @@ function getRequestedMarkets(body) {
   for (const value of requested) {
     const market = normalizeMarket(value);
     if (market && !markets.includes(market)) markets.push(market);
-    if (markets.length >= 6) break;
+    if (markets.length >= maxRenterMarkets) break;
   }
 
   return markets.length ? markets : ["gb"];
@@ -436,7 +321,8 @@ export function combineMarketResults(
   failures = [],
   body = {},
   createQuoteId = null,
-  provider = bookingCom18Provider
+  provider = bookingCom18Provider,
+  providerConfig = {}
 ) {
   const offersByKey = new Map();
   const searchKeys = new Map(
@@ -485,9 +371,18 @@ export function combineMarketResults(
             providerId: provider.id
           })
         : "";
+      const bookingUrl = typeof provider.buildBookingUrl === "function"
+        ? provider.buildBookingUrl({
+            vehicleId,
+            market: offer.fromCountry,
+            body: { ...body, currency: publicOffer.currency },
+            config: providerConfig
+          })
+        : "";
       return {
         ...publicOffer,
         ...(quoteId ? { quoteId } : {}),
+        ...(bookingUrl ? { bookingUrl } : {}),
         priceComparison: {
           countriesChecked: orderedVariants.map((variant) => variant.country),
           spread: maxPrice - minPrice

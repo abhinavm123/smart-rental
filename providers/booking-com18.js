@@ -15,6 +15,7 @@ export const bookingCom18Provider = {
   getConfig: createBookingCom18Config,
   isConfigured: (config) => Boolean(config.apiKey),
   configurationError: "Set RENTAL_API_KEY (or RAPIDAPI_KEY) in .env.",
+  buildBookingUrl,
   getSearchKey: (payload) => String(payload?.data?.search_key || ""),
   getOffers: (payload) => Array.isArray(payload?.data?.search_results)
     ? payload.data.search_results
@@ -22,6 +23,7 @@ export const bookingCom18Provider = {
   normalizeOffer: normalizeProviderOffer,
   searchLocations,
   resolvePickupId,
+  resolveDropOffId,
   searchCars,
   loadQuoteDetails
 };
@@ -32,6 +34,7 @@ export function createBookingCom18Config(env = process.env) {
 
   return {
     apiKey: String(env.RENTAL_API_KEY || env.RAPIDAPI_KEY || "").trim(),
+    bookingAffiliateId: normalizeAffiliateId(env.BOOKING_AFFILIATE_ID),
     host,
     endpoints: {
       search: endpointUrl(baseUrl, env.RENTAL_API_SEARCH_PATH || defaultPaths.search),
@@ -46,6 +49,94 @@ export function createBookingCom18Config(env = process.env) {
   };
 }
 
+export function buildBookingUrl({ vehicleId, market, body = {}, config = {} }) {
+  const id = String(vehicleId || "").trim();
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(id)) return "";
+
+  const pickupDate = parseDate(body.pickupDate);
+  const returnDate = parseDate(body.returnDate);
+  const pickupTime = parseTime(body.pickupTime);
+  const returnTime = parseTime(body.returnTime);
+  if (!pickupDate || !returnDate || !pickupTime || !returnTime) return "";
+
+  const country = /^[a-z]{2}$/i.test(String(market || ""))
+    ? String(market).toLowerCase()
+    : "gb";
+  const currency = /^[A-Z]{3}$/.test(String(body.currency || "").toUpperCase())
+    ? String(body.currency).toUpperCase()
+    : "GBP";
+  const locationName = String(body.location || "Pickup location").trim().slice(0, 160);
+  const differentDropoff = Boolean(body.differentDropoff && (body.dropOffId || body.dropOffLocation));
+  const dropLocationName = differentDropoff
+    ? String(body.dropOffLocation || "Drop-off location").trim().slice(0, 160)
+    : locationName;
+  const pickupCoordinates = decodeLocationCoordinates(body.pickupId);
+  const dropoffCoordinates = differentDropoff
+    ? decodeLocationCoordinates(body.dropOffId)
+    : pickupCoordinates;
+  const url = new URL("https://cars.booking.com/search-results");
+
+  url.searchParams.set("vehicleId", id);
+  url.searchParams.set("vehicleInfo.vehicle.id", id);
+  url.searchParams.set("prefcurrency", currency);
+  url.searchParams.set("preflang", "en");
+  url.searchParams.set("cor", country);
+  url.searchParams.set("driversAge", normalizeDriverAge(body.driverAge));
+  setTripParameters(url, "pu", pickupDate, pickupTime);
+  setTripParameters(url, "do", returnDate, returnTime);
+  url.searchParams.set("locationName", locationName);
+  url.searchParams.set("dropLocationName", dropLocationName);
+
+  if (pickupCoordinates) {
+    url.searchParams.set("location", "-1");
+    url.searchParams.set("coordinates", pickupCoordinates);
+  }
+  if (dropoffCoordinates) {
+    url.searchParams.set("dropLocation", "-1");
+    url.searchParams.set("dropCoordinates", dropoffCoordinates);
+  }
+
+  const affiliateId = normalizeAffiliateId(config.bookingAffiliateId);
+  if (affiliateId) url.searchParams.set("aid", affiliateId);
+  return url.href;
+}
+
+function parseDate(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? { year: match[1], month: String(Number(match[2])), day: String(Number(match[3])) } : null;
+}
+
+function parseTime(value) {
+  const match = String(value || "").match(/^(\d{2}):(\d{2})$/);
+  return match ? { hour: String(Number(match[1])), minute: String(Number(match[2])) } : null;
+}
+
+function setTripParameters(url, prefix, date, time) {
+  url.searchParams.set(`${prefix}Day`, date.day);
+  url.searchParams.set(`${prefix}Month`, date.month);
+  url.searchParams.set(`${prefix}Year`, date.year);
+  url.searchParams.set(`${prefix}Hour`, time.hour);
+  url.searchParams.set(`${prefix}Minute`, time.minute);
+}
+
+function decodeLocationCoordinates(value) {
+  try {
+    const decoded = JSON.parse(Buffer.from(String(value || ""), "base64").toString("utf8"));
+    const latitude = Number(decoded.latitude);
+    const longitude = Number(decoded.longitude);
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) return "";
+    if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) return "";
+    return `${latitude},${longitude}`;
+  } catch {
+    return "";
+  }
+}
+
+function normalizeAffiliateId(value) {
+  const id = String(value || "").trim();
+  return /^\d{1,20}$/.test(id) ? id : "";
+}
+
 async function searchLocations(query, config) {
   const endpoint = new URL(config.endpoints.autocomplete);
   endpoint.searchParams.set("query", query);
@@ -58,23 +149,33 @@ async function searchLocations(query, config) {
 }
 
 async function resolvePickupId(body, config) {
-  if (body.pickupId) return String(body.pickupId);
+  return resolveLocationId(body.pickupId, body.location, config, "pickup");
+}
 
-  const suggestions = await searchLocations(String(body.location || ""), config);
+async function resolveDropOffId(body, config) {
+  if (!body.differentDropoff) return "";
+  return resolveLocationId(body.dropOffId, body.dropOffLocation, config, "drop-off");
+}
+
+async function resolveLocationId(id, location, config, label) {
+  if (id) return String(id);
+
+  const suggestions = await searchLocations(String(location || ""), config);
   const first = suggestions.find((item) => item.id);
-  if (!first) throw new Error(`No rental pickup location was found for "${body.location}".`);
+  if (!first) throw new Error(`No rental ${label} location was found for "${location}".`);
   return first.id;
 }
 
-async function searchCars({ pickupId, body, market, config }) {
+export async function searchCars({ pickupId, dropOffId = "", body, market, config }) {
   const url = new URL(config.endpoints.search);
   url.searchParams.set("pickUpId", pickupId);
   url.searchParams.set("pickUpDate", body.pickupDate);
   url.searchParams.set("pickUpTime", body.pickupTime);
   url.searchParams.set("dropOffDate", body.returnDate);
   url.searchParams.set("dropOffTime", body.returnTime);
+  if (dropOffId) url.searchParams.set("dropOffId", dropOffId);
   url.searchParams.set("sortBy", "price_low_to_high");
-  url.searchParams.set("driverAge", "40");
+  url.searchParams.set("driverAge", normalizeDriverAge(body.driverAge));
   url.searchParams.set("units", "metric");
   url.searchParams.set("languageCode", "en-gb");
   url.searchParams.set("currencyCode", normalizeCurrency(body.currency));
@@ -121,7 +222,7 @@ export function normalizeProviderOffer(rawOffer, market, body = {}) {
   const supplierInfo = rawOffer?.supplier_info || {};
   const contentSupplier = rawOffer?.content?.supplier || {};
   const pricing = rawOffer?.pricing_info || {};
-  const totalPrice = positiveNumber(pricing.price) || positiveNumber(pricing.drive_away_price);
+  const totalPrice = positiveNumber(pricing.drive_away_price) || positiveNumber(pricing.price);
   if (!totalPrice) return null;
 
   const name = String(vehicle.v_name || rawOffer.vehicle_name || "Rental car");
@@ -129,7 +230,11 @@ export function normalizeProviderOffer(rawOffer, market, body = {}) {
   const supplier = String(supplierInfo.name || contentSupplier.name || "Supplier");
   const pickup = String(supplierInfo.address || rawOffer.pickup_location || body.location || "Pickup location");
   const vehicleCode = String(vehicle.sipp || vehicle.sipp_code || rawOffer.sipp_code || "");
-  const matchKey = [name, category, supplier, pickup].join("|").toLowerCase();
+  const vehicleId = String(vehicle.v_id || rawOffer.vehicle_id || "").trim();
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(vehicleId)) return null;
+  const matchParts = [name, category, supplier, pickup];
+  if (body.differentDropoff) matchParts.push(String(body.dropOffLocation || body.dropOffId || ""));
+  const matchKey = matchParts.join("|").toLowerCase();
   const id = createHash("sha1").update(matchKey).digest("hex").slice(0, 18);
   const days = tripDays(body.pickupDate, body.pickupTime, body.returnDate, body.returnTime);
   const knownFees = Array.isArray(pricing.fee_breakdown?.known_fees) ? pricing.fee_breakdown.known_fees : [];
@@ -151,7 +256,7 @@ export function normalizeProviderOffer(rawOffer, market, body = {}) {
     totalPrice,
     currency: String(pricing.currency || normalizeCurrency(body.currency)),
     originalPrice,
-    discountLabel: originalPrice ? getDiscountLabel(rawOffer, totalPrice, originalPrice) : "",
+    discountLabel: getDiscountLabel(rawOffer, totalPrice, originalPrice),
     dailyPrice: totalPrice / days,
     basePrice: positiveNumber(pricing.base_price),
     baseCurrency: String(pricing.base_currency || ""),
@@ -166,7 +271,7 @@ export function normalizeProviderOffer(rawOffer, market, body = {}) {
     doors: Number(vehicle.doors) || 0,
     pickup,
     imageUrl: String(vehicle.image_url || vehicle.image_thumbnail_url || rawOffer.image_url || ""),
-    vehicleId: String(vehicle.v_id || rawOffer.vehicle_id || ""),
+    vehicleId,
     fromCountry: market
   };
 }
@@ -185,9 +290,10 @@ function getDiscountLabel(offer, currentPrice, originalPrice) {
   const badges = Array.isArray(offer?.content?.badges) ? offer.content.badges : [];
   const badge = badges
     .map((item) => plainText(item?.text))
-    .find((text) => /discount|price cut|%\s*off|save/i.test(text));
+    .find((text) => /discount|price cut|%\s*off|save|mobile-only|genius|member price|special price/i.test(text));
   if (badge) return badge;
 
+  if (!(originalPrice > currentPrice)) return "";
   const percentage = Math.round((1 - currentPrice / originalPrice) * 100);
   return percentage > 0 ? `${percentage}% price cut` : "Price cut";
 }
@@ -407,6 +513,14 @@ function endpointUrl(baseUrl, path) {
 function normalizeCurrency(value) {
   const currency = String(value || "GBP").trim().toUpperCase();
   return /^[A-Z]{3}$/.test(currency) ? currency : "GBP";
+}
+
+function normalizeDriverAge(value) {
+  const age = Number(value);
+  if (!Number.isInteger(age) || age < 18 || age > 99) {
+    throw new Error("Driver age must be between 18 and 99.");
+  }
+  return String(age);
 }
 
 function toArray(value) {

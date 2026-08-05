@@ -91,23 +91,6 @@ h1 {
   line-height: 1.45;
 }
 
-.admin-link {
-  display: inline-flex;
-  min-height: 40px;
-  align-items: center;
-  padding: 0 13px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  color: var(--green-dark);
-  background: #fff;
-  font-weight: 800;
-  text-decoration: none;
-}
-
-.admin-link:hover {
-  background: var(--soft);
-}
-
 .search-panel {
   padding: 18px;
   border: 1px solid var(--line);
@@ -141,6 +124,23 @@ h1 {
   position: relative;
 }
 
+.different-dropoff-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 9px;
+  color: #34433e;
+  font-size: .86rem;
+  font-weight: 760;
+  cursor: pointer;
+}
+
+.different-dropoff-toggle input {
+  width: 18px;
+  min-height: 18px;
+  accent-color: var(--green);
+}
+
 input,
 select {
   width: 100%;
@@ -170,7 +170,7 @@ button:focus-visible {
 }
 
 .options-row {
-  grid-template-columns: repeat(5, minmax(140px, 1fr));
+  grid-template-columns: repeat(7, minmax(120px, 1fr));
 }
 
 .compact-field {
@@ -224,6 +224,20 @@ button:focus-visible {
 .suggestion-message {
   color: var(--muted);
   font-size: .82rem;
+}
+
+.rental-route {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 8px;
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: .84rem;
+}
+
+.rental-route strong {
+  color: #3d5049;
 }
 
 .toggle-group {
@@ -577,6 +591,20 @@ button:focus-visible {
   text-align: right;
 }
 
+.account-discount-note {
+  max-width: 250px;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: .76rem;
+  line-height: 1.4;
+  text-align: right;
+}
+
+.detail-grid .account-discount-note {
+  max-width: 440px;
+  text-align: left;
+}
+
 .price-cut,
 .detail-price-cut {
   display: flex;
@@ -587,6 +615,10 @@ button:focus-visible {
 }
 
 .price-cut {
+  justify-content: flex-end;
+}
+
+.price-badge-only {
   justify-content: flex-end;
 }
 
@@ -609,9 +641,10 @@ button:focus-visible {
 }
 
 .card-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
-  justify-content: flex-end;
+  min-width: 220px;
 }
 
 .details-button,
@@ -620,6 +653,30 @@ button:focus-visible {
   border: 1px solid var(--line);
   background: #fff;
   color: var(--green-dark);
+}
+
+.booking-button,
+.detail-booking-button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  border-radius: 8px;
+  background: var(--green-dark);
+  color: #fff;
+  text-align: center;
+  text-decoration: none;
+  font-weight: 850;
+}
+
+.booking-button {
+  grid-column: 1 / -1;
+}
+
+.booking-button:hover,
+.detail-booking-button:hover {
+  background: var(--green);
 }
 
 .details-button:hover,
@@ -754,6 +811,32 @@ button:focus-visible {
 .detail-price-change[data-direction="increased"] {
   color: #8d2d20;
   background: #f8e5e1;
+}
+
+.booking-handoff {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px;
+  border: 1px solid #9bcbb9;
+  border-radius: 8px;
+  background: #e3f3ed;
+}
+
+.booking-handoff div {
+  display: grid;
+  gap: 4px;
+}
+
+.booking-handoff p {
+  color: var(--muted);
+  font-size: .84rem;
+  line-height: 1.4;
+}
+
+.detail-booking-button {
+  flex: 0 0 auto;
 }
 
 .detail-loading {
@@ -952,11 +1035,16 @@ button:focus-visible {
 
   .card-actions {
     width: 100%;
-    justify-content: stretch;
+    min-width: 0;
   }
 
   .details-button,
   .save-button {
-    flex: 1;
+    width: 100%;
+  }
+
+  .booking-handoff {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

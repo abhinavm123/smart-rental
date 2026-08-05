@@ -16,7 +16,6 @@
             <p>Search live rental cars and compare the cheapest useful options.</p>
           </div>
         </div>
-        <a class="admin-link" href="/admin">Admin</a>
       </header>
 
       <section class="search-panel" aria-label="Car rental search">
@@ -34,6 +33,27 @@
               aria-controls="locationSuggestions"
             >
             <div id="locationSuggestions" class="suggestions" role="listbox" hidden></div>
+          </label>
+
+          <label class="different-dropoff-toggle">
+            <input id="differentDropoffInput" type="checkbox">
+            Return car to a different location
+          </label>
+
+          <label id="dropoffLocationField" class="field location-field" hidden>
+            <span>Drop-off location</span>
+            <input
+              id="dropoffLocationInput"
+              type="search"
+              placeholder="Start typing a city, airport, or station"
+              autocomplete="off"
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded="false"
+              aria-controls="dropoffLocationSuggestions"
+              disabled
+            >
+            <div id="dropoffLocationSuggestions" class="suggestions" role="listbox" hidden></div>
           </label>
 
           <div class="field-row">
@@ -56,6 +76,10 @@
           </div>
 
           <div class="field-row options-row">
+            <label class="field">
+              <span>Driver age</span>
+              <input id="driverAgeInput" type="number" min="18" max="99" step="1" inputmode="numeric" placeholder="18–99" required>
+            </label>
             <label class="field">
               <span>Currency</span>
               <select id="currencyInput">
@@ -91,6 +115,15 @@
               </select>
             </label>
             <label class="field">
+              <span>Review score</span>
+              <select id="supplierRatingInput">
+                <option value="0" selected>Any score</option>
+                <option value="7">7+</option>
+                <option value="8">8+</option>
+                <option value="9">9+</option>
+              </select>
+            </label>
+            <label class="field">
               <span>Sort by</span>
               <select id="sortInput">
                 <option value="total" selected>Lowest total</option>
@@ -110,12 +143,12 @@
           <fieldset class="country-group">
             <legend>Compare renter markets</legend>
             <label><input class="countryInput" type="checkbox" value="gb" checked> UK</label>
-            <label><input class="countryInput" type="checkbox" value="us"> US</label>
-            <label><input class="countryInput" type="checkbox" value="it"> Italy</label>
-            <label><input class="countryInput" type="checkbox" value="de"> Germany</label>
-            <label><input class="countryInput" type="checkbox" value="fr"> France</label>
-            <label><input class="countryInput" type="checkbox" value="es"> Spain</label>
-            <label><input class="countryInput" type="checkbox" value="ca"> Canada</label>
+            <label><input class="countryInput" type="checkbox" value="us" checked> US</label>
+            <label><input class="countryInput" type="checkbox" value="it" checked> Italy</label>
+            <label><input class="countryInput" type="checkbox" value="de" checked> Germany</label>
+            <label><input class="countryInput" type="checkbox" value="fr" checked> France</label>
+            <label><input class="countryInput" type="checkbox" value="es" checked> Spain</label>
+            <label><input class="countryInput" type="checkbox" value="ca" checked> Canada</label>
           </fieldset>
 
           <div class="search-actions">
