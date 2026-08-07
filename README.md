@@ -1,16 +1,18 @@
 # Smart Rental
 
-Smart Rental searches the car-rental section of the `booking-com18` API on RapidAPI. It runs the same trip search for each selected renter market, keeps the cheapest matching supplier/vehicle offer, and shows the price spread between markets.
+Smart Rental searches car-rental providers through a small provider-adapter layer. The included `booking-com18` adapter uses RapidAPI, runs the same trip search for each selected renter market, keeps the cheapest matching supplier/vehicle offer, and shows the price spread between markets.
 
 ## How it works
 
 - The browser requests rental locations from `/api/locations`.
 - The Node server calls `/car/auto-complete` and returns provider location IDs.
-- A search calls `/car/search` once per selected `countryFlag`, with identical location, dates, driver age, language, and currency.
+- A search calls `/car/search` once per selected `countryFlag`, with identical locations, dates, exact driver age, language, and currency. One-way searches include the selected `dropOffId`; driver ages from 18–99 are validated and passed through to provider pricing and Booking.com links.
 - Results are normalized and matched by vehicle, category, supplier, and pickup address before their prices are compared.
+- Results can be filtered locally by supplier review score (7+, 8+, or 9+) without making another provider request.
 - Each result gets an opaque, short-lived quote ID. Opening **Review live quote** loads `/car/detail`, `/car/packages`, and `/car/booking-summary` on the server using the matching vehicle ID and search key.
+- Each current result also gets a **Check latest price on Booking.com** link built from its fresh vehicle ID, trip, currency and winning renter market. Booking.com performs the final availability and price check.
+- Quote cards note that Booking.com may apply further vehicle discounts based on the customer's account level; these are only confirmed on Booking.com.
 - The quote dialog shows the provider's confirmed total, price breakdown, fees, inclusions, protection packages, trip summary, important information, and rental-terms link.
-- Operational events are recorded without API keys, search keys, or customer details and are available to authenticated administrators.
 - The RapidAPI key stays on the server and is never sent to browser code.
 
 ## Setup
@@ -22,11 +24,11 @@ Smart Rental searches the car-rental section of the `booking-com18` API on Rapid
 Copy-Item .env.example .env
 ```
 
-3. Put your RapidAPI key in `.env`.
+3. Put your provider and RapidAPI key in `.env`.
 
 ```env
-RAPIDAPI_KEY=your_key_here
-ADMIN_PASSWORD=use_a_long_unique_password_here
+RENTAL_PROVIDER=booking-com18
+RENTAL_API_KEY=your_key_here
 ```
 
 4. Start the app.
@@ -48,26 +50,35 @@ npm test
 ## Configuration
 
 ```env
-RAPIDAPI_KEY=your_key_here
-ADMIN_PASSWORD=use_a_long_unique_password_here
+RENTAL_PROVIDER=booking-com18
+RENTAL_API_KEY=your_key_here
+RENTAL_API_HOST=booking-com18.p.rapidapi.com
+RENTAL_API_BASE_URL=https://booking-com18.p.rapidapi.com
+RENTAL_API_AUTOCOMPLETE_PATH=/car/auto-complete
+RENTAL_API_SEARCH_PATH=/car/search
+RENTAL_API_DETAIL_PATH=/car/detail
+RENTAL_API_PACKAGES_PATH=/car/packages
+RENTAL_API_BOOKING_SUMMARY_PATH=/car/booking-summary
+# BOOKING_AFFILIATE_ID=123456
 PORT=3000
 ```
 
-## Admin dashboard
+`RAPIDAPI_KEY` remains supported as a backwards-compatible fallback. The `RENTAL_API_*_PATH` settings let you switch hosts or endpoint paths without code changes when the replacement API uses the same request and response format.
 
-Open `http://localhost:3000/admin` and sign in with `ADMIN_PASSWORD`.
+## Changing rental APIs
 
-The protected dashboard includes search and quote activity, top locations, saved-quote checks, API failures, a manual cashflow ledger, currency-separated totals, pending entries, gross booking value, and a 14-day activity view.
+The browser and the main server use a provider-neutral quote format. Provider-specific request parameters and response mapping live in `providers/`.
 
-Admin sessions use an HTTP-only, same-site cookie, expire after eight hours, and require a CSRF token for changes. Failed logins are rate limited. Ledger and analytics data are stored in `.data/admin.json`, which is excluded from Git.
+- If a replacement is compatible with `booking-com18`, update `RENTAL_API_HOST`, `RENTAL_API_BASE_URL`, the endpoint paths, and the key in `.env`.
+- If its JSON or search flow differs, copy the shape of `providers/booking-com18.js`, implement the provider contract, and register it in `providers/index.js`. Then switching between installed adapters only requires changing `RENTAL_PROVIDER`.
 
-Cashflow entries are manual until a completed-booking or affiliate conversion feed is connected. Operational search activity must not be treated as booking revenue.
+Every adapter supplies its own configuration check, location search, pickup resolution, market search, search-key and offer extraction, offer normalization, live quote-detail loading, and (when supported) outbound booking URL creation. This keeps authentication and API changes out of the website, saved-quote, and comparison code.
 
 ## Notes
 
 - Keep the display currency fixed when comparing countries; otherwise exchange-rate changes can look like market-price changes.
-- UK and GBP are selected by default; users can opt into additional renter markets.
-- The backend uses a default driver age of 40 because the provider accepts ages 30-65.
+- All seven renter markets and GBP are selected by default; users can remove markets they do not want to compare.
+- Driver age is required and must be an exact whole number from 18 to 99 because it can change eligibility and pricing.
 - The provider is an unofficial API that reproduces public Booking.com data. Treat its schema and availability as third-party dependencies and keep fixture tests for the fields the app consumes.
 - Provider calls may consume RapidAPI quota. A search makes one call per selected renter market; the first detail view for a result makes three additional calls. Quote details are cached for 30 minutes.
-- The repaired endpoints provide detailed quote and rental-terms data, but still do not return a reliable exact-vehicle checkout URL. The app therefore stops at quote review rather than presenting a misleading booking button.
+- The provider does not return a checkout URL, so the adapter builds Booking.com's documented vehicle-result URL from the fresh vehicle ID and search context. The link preserves the displayed quote's renter country and currency, but Booking.com remains responsible for the final live price, availability and checkout.

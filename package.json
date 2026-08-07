@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "check": "node --check server.js && node --check app.js && node --check admin-server.js && node --check admin.js",
+    "check": "node --check server.js && node --check app.js && node --check providers/index.js && node --check providers/booking-com18.js",
     "test": "node --test"
   },
   "engines": {

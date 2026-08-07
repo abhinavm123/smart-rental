@@ -8,9 +8,16 @@ import {
   normalizeProviderOffer,
   normalizeQuoteDetails
 } from "./server.js";
+import {
+  buildBookingUrl,
+  createBookingCom18Config,
+  searchCars
+} from "./providers/booking-com18.js";
+import { getRentalProvider, getRentalProviderIds } from "./providers/index.js";
 
 const trip = {
   location: "New York",
+  driverAge: 40,
   pickupDate: "2026-07-29",
   pickupTime: "10:00",
   returnDate: "2026-08-02",
@@ -73,17 +80,14 @@ test("serves the app and validates search requests locally", async (context) => 
   const baseUrl = `http://127.0.0.1:${port}`;
   const page = await fetch(baseUrl);
   assert.equal(page.status, 200);
-  assert.match(await page.text(), /Smart Rental/);
+  const pageHtml = await page.text();
+  assert.match(pageHtml, /Smart Rental/);
+  assert.match(pageHtml, /supplierRatingInput/);
+  assert.match(pageHtml, /id="driverAgeInput"[^>]*required/);
+  assert.equal((pageHtml.match(/class="countryInput"[^>]*checked/g) || []).length, 7);
 
   const envFile = await fetch(`${baseUrl}/.env`);
   assert.equal(envFile.status, 404);
-
-  const adminPage = await fetch(`${baseUrl}/admin`);
-  assert.equal(adminPage.status, 200);
-  assert.match(await adminPage.text(), /Admin sign in/);
-
-  const privateDashboard = await fetch(`${baseUrl}/api/admin/dashboard`);
-  assert.equal(privateDashboard.status, 401);
 
   const invalidSearch = await fetch(`${baseUrl}/api/cars`, {
     method: "POST",
@@ -92,6 +96,36 @@ test("serves the app and validates search requests locally", async (context) => 
   });
   assert.equal(invalidSearch.status, 400);
   assert.deepEqual(await invalidSearch.json(), { error: "A pickup location is required." });
+
+  const missingDropoff = await fetch(`${baseUrl}/api/cars`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...trip, differentDropoff: true })
+  });
+  assert.equal(missingDropoff.status, 400);
+  assert.deepEqual(await missingDropoff.json(), {
+    error: "A drop-off location is required when returning the car somewhere else."
+  });
+
+  const invalidDriverAge = await fetch(`${baseUrl}/api/cars`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...trip, driverAge: 17 })
+  });
+  assert.equal(invalidDriverAge.status, 400);
+  assert.deepEqual(await invalidDriverAge.json(), {
+    error: "Driver age must be between 18 and 99."
+  });
+
+  const missingDriverAge = await fetch(`${baseUrl}/api/cars`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...trip, driverAge: undefined })
+  });
+  assert.equal(missingDriverAge.status, 400);
+  assert.deepEqual(await missingDriverAge.json(), {
+    error: "Driver age is required."
+  });
 });
 
 test("normalizes UK market aliases", () => {
@@ -116,6 +150,30 @@ test("normalizes a booking-com18 rental offer", () => {
   assert.equal(normalized.dailyPrice, 189.69 / 4);
   assert.equal(normalized.cancellation, "free cancellation");
   assert.equal(normalized.fromCountry, "gb");
+
+  const oneWay = normalizeProviderOffer(discountedOffer, "gb", {
+    ...trip,
+    differentDropoff: true,
+    dropOffLocation: "Boston"
+  });
+  assert.notEqual(oneWay.id, normalized.id);
+
+  const missingVehicleId = offer(189.69, "GBP");
+  delete missingVehicleId.vehicle_info.v_id;
+  assert.equal(normalizeProviderOffer(missingVehicleId, "gb", trip), null);
+
+  const oneWayPrice = offer(108.56, "GBP");
+  oneWayPrice.pricing_info.drive_away_price = 201.66;
+  oneWayPrice.content.badges.unshift({ text: "Mobile-only price" });
+  const normalizedOneWayPrice = normalizeProviderOffer(oneWayPrice, "gb", {
+    ...trip,
+    differentDropoff: true,
+    dropOffLocation: "Seville"
+  });
+  assert.equal(normalizedOneWayPrice.totalPrice, 201.66);
+  assert.equal(normalizedOneWayPrice.dailyPrice, 201.66 / 4);
+  assert.equal(normalizedOneWayPrice.originalPrice, 0);
+  assert.equal(normalizedOneWayPrice.discountLabel, "Mobile-only price");
 });
 
 test("matches offers across countries and keeps the cheapest market", () => {
@@ -133,6 +191,11 @@ test("matches offers across countries and keeps the cheapest market", () => {
   assert.equal(result.offers[0].fromCountry, "gb");
   assert.equal(result.offers[0].totalPrice, 189.69);
   assert.equal(result.offers[0].quoteId, "opaque-quote-id");
+  const bookingUrl = new URL(result.offers[0].bookingUrl);
+  assert.equal(bookingUrl.hostname, "cars.booking.com");
+  assert.equal(bookingUrl.searchParams.get("vehicleId"), "vehicle-1");
+  assert.equal(bookingUrl.searchParams.get("cor"), "gb");
+  assert.equal(bookingUrl.searchParams.get("prefcurrency"), "GBP");
   assert.equal(result.offers[0].priceComparison.countriesChecked.length, 3);
   assert.equal(result.offers[0].priceComparison.spread, 207.36 - 189.69);
   assert.equal(result.offers[0].matchKey, undefined);
@@ -140,11 +203,132 @@ test("matches offers across countries and keeps the cheapest market", () => {
   assert.deepEqual(registeredQuote, {
     vehicleId: "vehicle-1",
     searchKey: "gb-key",
-    market: "gb"
+    market: "gb",
+    providerId: "booking-com18"
   });
   assert.deepEqual(result.meta.markets, ["us", "gb", "it"]);
   assert.equal(result.meta.sourceOfferCount, 3);
   assert.equal(result.meta.offerCount, 1);
+});
+
+test("selects a rental provider and supports compatible endpoint overrides", () => {
+  assert.deepEqual(getRentalProviderIds(), ["booking-com18"]);
+  assert.equal(getRentalProvider().id, "booking-com18");
+  assert.throws(
+    () => getRentalProvider("not-installed"),
+    /Unknown RENTAL_PROVIDER/
+  );
+
+  const config = createBookingCom18Config({
+    RENTAL_API_KEY: "example-key",
+    RENTAL_API_HOST: "cars.example.test",
+    RENTAL_API_BASE_URL: "https://cars.example.test/api/",
+    RENTAL_API_SEARCH_PATH: "search-rentals",
+    RENTAL_API_AUTOCOMPLETE_PATH: "locations"
+  });
+
+  assert.equal(config.apiKey, "example-key");
+  assert.equal(config.host, "cars.example.test");
+  assert.equal(config.endpoints.search, "https://cars.example.test/api/search-rentals");
+  assert.equal(config.endpoints.autocomplete, "https://cars.example.test/api/locations");
+  assert.equal(
+    config.endpoints.bookingSummary,
+    "https://cars.example.test/car/booking-summary"
+  );
+});
+
+test("builds country-specific Booking.com links from fresh quote context", () => {
+  const pickupId = Buffer.from(JSON.stringify({
+    latitude: "40.774200439453125",
+    longitude: "-73.87190246582031"
+  })).toString("base64");
+  const context = {
+    ...trip,
+    driverAge: 25,
+    location: "LaGuardia Airport",
+    pickupId,
+    pickupDate: "2026-08-04",
+    pickupTime: "12:00",
+    returnDate: "2026-08-06",
+    returnTime: "12:00",
+    currency: "USD"
+  };
+
+  const usUrl = new URL(buildBookingUrl({
+    vehicleId: "785102596",
+    market: "us",
+    body: context
+  }));
+  assert.equal(usUrl.origin, "https://cars.booking.com");
+  assert.equal(usUrl.pathname, "/search-results");
+  assert.equal(usUrl.searchParams.get("vehicleInfo.vehicle.id"), "785102596");
+  assert.equal(usUrl.searchParams.get("cor"), "us");
+  assert.equal(usUrl.searchParams.get("prefcurrency"), "USD");
+  assert.equal(usUrl.searchParams.get("driversAge"), "25");
+  assert.equal(usUrl.searchParams.get("puDay"), "4");
+  assert.equal(usUrl.searchParams.get("puMonth"), "8");
+  assert.equal(usUrl.searchParams.get("coordinates"), "40.774200439453125,-73.87190246582031");
+
+  for (const market of ["gb", "us", "it", "de", "fr", "es", "ca"]) {
+    const marketUrl = new URL(buildBookingUrl({
+      vehicleId: "785102596",
+      market,
+      body: context,
+      config: { bookingAffiliateId: "123456" }
+    }));
+    assert.equal(marketUrl.searchParams.get("cor"), market);
+    assert.equal(marketUrl.searchParams.get("aid"), "123456");
+  }
+  assert.equal(buildBookingUrl({ vehicleId: "", market: "us", body: context }), "");
+
+  const dropOffId = Buffer.from(JSON.stringify({
+    latitude: "40.6413111",
+    longitude: "-73.7781391"
+  })).toString("base64");
+  const oneWayUrl = new URL(buildBookingUrl({
+    vehicleId: "785102596",
+    market: "gb",
+    body: {
+      ...context,
+      differentDropoff: true,
+      dropOffLocation: "John F. Kennedy International Airport",
+      dropOffId
+    }
+  }));
+  assert.equal(oneWayUrl.searchParams.get("locationName"), "LaGuardia Airport");
+  assert.equal(oneWayUrl.searchParams.get("dropLocationName"), "John F. Kennedy International Airport");
+  assert.equal(oneWayUrl.searchParams.get("coordinates"), "40.774200439453125,-73.87190246582031");
+  assert.equal(oneWayUrl.searchParams.get("dropCoordinates"), "40.6413111,-73.7781391");
+});
+
+test("passes a separate drop-off ID to one-way rental searches", async (context) => {
+  let requestedUrl = "";
+  context.mock.method(globalThis, "fetch", async (url) => {
+    requestedUrl = String(url);
+    return new Response(JSON.stringify({ status: true, data: { search_results: [] } }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+  });
+
+  const config = createBookingCom18Config({
+    RENTAL_API_KEY: "example-key",
+    RENTAL_API_HOST: "cars.example.test",
+    RENTAL_API_BASE_URL: "https://cars.example.test"
+  });
+  await searchCars({
+    pickupId: "pickup-id",
+    dropOffId: "dropoff-id",
+    body: trip,
+    market: "gb",
+    config
+  });
+
+  const url = new URL(requestedUrl);
+  assert.equal(url.pathname, "/car/search");
+  assert.equal(url.searchParams.get("pickUpId"), "pickup-id");
+  assert.equal(url.searchParams.get("dropOffId"), "dropoff-id");
+  assert.equal(url.searchParams.get("driverAge"), "40");
 });
 
 test("normalizes repaired detail, packages and booking-summary responses", () => {

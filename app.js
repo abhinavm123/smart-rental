@@ -2,14 +2,20 @@ const elements = {
   searchForm: document.querySelector("#searchForm"),
   location: document.querySelector("#locationInput"),
   locationSuggestions: document.querySelector("#locationSuggestions"),
+  differentDropoff: document.querySelector("#differentDropoffInput"),
+  dropoffLocationField: document.querySelector("#dropoffLocationField"),
+  dropoffLocation: document.querySelector("#dropoffLocationInput"),
+  dropoffLocationSuggestions: document.querySelector("#dropoffLocationSuggestions"),
   pickupDate: document.querySelector("#pickupDateInput"),
   pickupTime: document.querySelector("#pickupTimeInput"),
   returnDate: document.querySelector("#returnDateInput"),
   returnTime: document.querySelector("#returnTimeInput"),
+  driverAge: document.querySelector("#driverAgeInput"),
   currency: document.querySelector("#currencyInput"),
   maxPrice: document.querySelector("#maxPriceInput"),
   vehicleSize: document.querySelector("#vehicleSizeInput"),
   transmission: document.querySelector("#transmissionInput"),
+  supplierRating: document.querySelector("#supplierRatingInput"),
   features: [...document.querySelectorAll(".featureInput")],
   countries: [...document.querySelectorAll(".countryInput")],
   sort: document.querySelector("#sortInput"),
@@ -37,17 +43,21 @@ const state = {
   hasSearched: false,
   savedOnly: false,
   selectedLocation: null,
+  selectedDropoffLocation: null,
   suggestions: [],
+  dropoffSuggestions: [],
   suggestionCache: new Map(),
   activeSuggestion: -1,
+  dropoffActiveSuggestion: -1,
   suggestionAbort: null,
+  dropoffSuggestionAbort: null,
   detailCache: new Map(),
   detailAbort: null,
   activeDetailId: "",
   saved: loadSavedCars()
 };
 
-let suggestionTimer = 0;
+const suggestionTimers = { pickup: 0, dropoff: 0 };
 
 const vehicleSizeLabels = {
   mini_economy: "Mini / Economy",
@@ -60,6 +70,7 @@ const vehicleSizeLabels = {
 };
 
 setDefaultDates();
+syncDifferentDropoffField();
 render();
 
 function setDefaultDates() {
@@ -93,6 +104,7 @@ function getFilters() {
     maxPrice: Number.isFinite(maxPrice) && maxPrice > 0 ? maxPrice : Infinity,
     vehicleSize: elements.vehicleSize.value,
     transmission: elements.transmission.value,
+    minimumSupplierRating: Number(elements.supplierRating.value) || 0,
     features: elements.features.filter((input) => input.checked).map((input) => input.value)
   };
 }
@@ -104,6 +116,7 @@ function getSearchRequest() {
     pickupTime: elements.pickupTime.value,
     returnDate: elements.returnDate.value,
     returnTime: elements.returnTime.value,
+    driverAge: elements.driverAge.value === "" ? null : Number(elements.driverAge.value),
     currency: elements.currency.value,
     fromCountries: getSelectedCountries()
   };
@@ -113,11 +126,25 @@ function getSearchRequest() {
     request.pickupId = state.selectedLocation.id;
   }
 
+  if (elements.differentDropoff.checked) {
+    request.differentDropoff = true;
+    request.dropOffLocation = elements.dropoffLocation.value.trim();
+    if (state.selectedDropoffLocation) {
+      request.dropOffLocation = state.selectedDropoffLocation.label;
+      request.dropOffId = state.selectedDropoffLocation.id;
+    }
+  }
+
   return request;
 }
 
 function validateSearch(request) {
   if (!request.location) return "Choose a pickup location.";
+  if (request.differentDropoff && !request.dropOffLocation) return "Choose a drop-off location.";
+  if (request.driverAge === null) return "Enter the driver's age.";
+  if (!Number.isInteger(request.driverAge) || request.driverAge < 18 || request.driverAge > 99) {
+    return "Driver age must be between 18 and 99.";
+  }
   if (!request.pickupDate || !request.returnDate) return "Choose pickup and return dates.";
   if (!request.fromCountries.length) return "Choose at least one renter country to compare.";
 
@@ -149,11 +176,13 @@ function matchesCar(car, filters) {
   const featureMatch = filters.features.every((feature) => hasFeature(car, feature));
   const sizeMatch = filters.vehicleSize === "any" || car.vehicleSize === filters.vehicleSize;
   const transmissionMatch = filters.transmission === "any" || car.transmission === filters.transmission;
+  const ratingMatch = car.supplierRating >= filters.minimumSupplierRating;
 
   return (
     car.totalPrice <= filters.maxPrice &&
     sizeMatch &&
     transmissionMatch &&
+    ratingMatch &&
     featureMatch
   );
 }
@@ -256,7 +285,7 @@ function renderCard(car) {
         </div>
         ${car.similarLabel ? `<p class="vehicle-subtitle">${escapeHtml(car.similarLabel)}</p>` : ""}
         ${renderProvider(car)}
-        <p class="address">${escapeHtml(car.category)} &middot; ${escapeHtml(car.pickup)}</p>
+        ${renderRentalRoute(car)}
         <div class="chips">
           <span class="chip">${escapeHtml(getVehicleSizeLabel(car.vehicleSize))}</span>
           <span class="chip">${escapeHtml(formatTerm(car.transmission))}</span>
@@ -272,14 +301,53 @@ function renderCard(car) {
           ${renderPriceCut(car)}
           <div class="rent">${money(car.totalPrice, car.currency)}</div>
           <div class="deal-score">${money(car.dailyPrice, car.currency)} per day</div>
+          ${renderAccountDiscountNote()}
         </div>
         <div class="card-actions">
+          ${renderBookingButton(car)}
           <button class="details-button" type="button" data-detail="${escapeHtml(car.id)}">${car.quoteId ? "Review live quote" : "Review terms"}</button>
           <button class="save-button" type="button" aria-pressed="${saved}" data-save="${escapeHtml(car.id)}">${saved ? "Saved" : "Save"}</button>
         </div>
       </div>
     </article>
   `;
+}
+
+function renderRentalRoute(car) {
+  const dropoff = car.searchRequest?.differentDropoff
+    ? car.dropoff || car.searchRequest.dropOffLocation
+    : "";
+  if (!dropoff) {
+    return `<p class="address">${escapeHtml(car.category)} &middot; ${escapeHtml(car.pickup)}</p>`;
+  }
+
+  return `
+    <p class="address">${escapeHtml(car.category)}</p>
+    <p class="rental-route">
+      <span><strong>Pick-up:</strong> ${escapeHtml(car.pickup)}</span>
+      <span aria-hidden="true">&rarr;</span>
+      <span><strong>Drop-off:</strong> ${escapeHtml(dropoff)}</span>
+    </p>
+  `;
+}
+
+function renderBookingButton(car, className = "booking-button") {
+  const bookingUrl = safeBookingUrl(car.bookingUrl);
+  if (!bookingUrl || car.availability !== "active") return "";
+
+  return `
+    <a
+      class="${className}"
+      href="${escapeHtml(bookingUrl)}"
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="View this ${escapeHtml(formatCountry(car.fromCountry))}-priced quote on Booking.com"
+    >Check latest price on Booking.com</a>
+  `;
+}
+
+function renderAccountDiscountNote() {
+  return `<p class="account-discount-note">Booking.com may apply further discounts to this vehicle based on your account level.</p>`;
 }
 
 function renderProvider(car) {
@@ -373,7 +441,13 @@ async function fetchLiveCars() {
 
     const visibleCars = render();
     setStatus(
-      getSearchStatus(cars.length, visibleCars.length, request.location),
+      getSearchStatus(
+        cars.length,
+        visibleCars.length,
+        request.differentDropoff
+          ? `${request.location} to ${request.dropOffLocation}`
+          : request.location
+      ),
       cars.length && visibleCars.length ? "success" : "error"
     );
     scrollToResults();
@@ -393,6 +467,7 @@ function normalizeCar(item, index) {
   const name = String(item?.name || "Rental car");
   const category = String(item?.category || "Car");
   const vehicleCode = String(item?.vehicleCode || "");
+  const searchRequest = normalizeSearchContext(item?.searchRequest);
   return {
     ...item,
     id: String(item?.id || `car-${index}`),
@@ -419,10 +494,12 @@ function normalizeCar(item, index) {
     mileage: normalizeMileage(item?.mileage),
     cancellation: normalizeCancellation(item?.cancellation),
     pickup: String(item?.pickup || elements.location.value.trim() || "Pickup"),
+    dropoff: String(item?.dropoff || searchRequest?.dropOffLocation || ""),
     imageUrl: safeUrl(item?.imageUrl),
+    bookingUrl: safeBookingUrl(item?.bookingUrl),
     knownFees: Array.isArray(item?.knownFees) ? item.knownFees : [],
     priceComparison: item?.priceComparison || null,
-    searchRequest: normalizeSearchContext(item?.searchRequest),
+    searchRequest,
     lastCheckedAt: normalizeTimestamp(item?.lastCheckedAt),
     previousPrice: Number(item?.previousPrice) > 0 ? Number(item.previousPrice) : 0,
     priceChange: Number.isFinite(Number(item?.priceChange)) ? Number(item.priceChange) : 0,
@@ -439,11 +516,15 @@ function normalizeSearchContext(value) {
   const returnDate = String(value.returnDate || "");
   const pickupTime = String(value.pickupTime || "");
   const returnTime = String(value.returnTime || "");
+  const driverAge = Number(value.driverAge);
   if (
     !/^\d{4}-\d{2}-\d{2}$/.test(pickupDate)
     || !/^\d{4}-\d{2}-\d{2}$/.test(returnDate)
     || !/^\d{2}:\d{2}$/.test(pickupTime)
     || !/^\d{2}:\d{2}$/.test(returnTime)
+    || !Number.isInteger(driverAge)
+    || driverAge < 18
+    || driverAge > 99
   ) {
     return null;
   }
@@ -451,6 +532,10 @@ function normalizeSearchContext(value) {
   return {
     location: String(value.location || ""),
     pickupId: String(value.pickupId || ""),
+    differentDropoff: Boolean(value.differentDropoff),
+    dropOffLocation: value.differentDropoff ? String(value.dropOffLocation || "") : "",
+    dropOffId: value.differentDropoff ? String(value.dropOffId || "") : "",
+    driverAge,
     pickupDate,
     pickupTime,
     returnDate,
@@ -459,7 +544,7 @@ function normalizeSearchContext(value) {
       ? String(value.currency).toUpperCase()
       : "GBP",
     fromCountries: Array.isArray(value.fromCountries)
-      ? value.fromCountries.map(String).slice(0, 6)
+      ? value.fromCountries.map(String).slice(0, 7)
       : ["gb"]
   };
 }
@@ -485,12 +570,13 @@ function renderCountryComparison(car) {
 }
 
 function renderPriceCut(car, className = "price-cut") {
-  if (!(car.originalPrice > car.totalPrice)) return "";
-  const label = car.discountLabel || "Price cut";
+  const hasBeforePrice = car.originalPrice > car.totalPrice;
+  const label = car.discountLabel || (hasBeforePrice ? "Price cut" : "");
+  if (!label) return "";
 
   return `
-    <div class="${className}">
-      <del aria-label="Original price ${escapeHtml(money(car.originalPrice, car.currency))}">${money(car.originalPrice, car.currency)}</del>
+    <div class="${className}${hasBeforePrice ? "" : " price-badge-only"}">
+      ${hasBeforePrice ? `<del aria-label="Original price ${escapeHtml(money(car.originalPrice, car.currency))}">${money(car.originalPrice, car.currency)}</del>` : ""}
       <span>${escapeHtml(label)}</span>
     </div>
   `;
@@ -647,6 +733,7 @@ function hasActiveFilters() {
     Boolean(elements.maxPrice.value) ||
     elements.vehicleSize.value !== "any" ||
     elements.transmission.value !== "any" ||
+    elements.supplierRating.value !== "0" ||
     elements.features.some((input) => input.checked) ||
     state.savedOnly
   );
@@ -656,6 +743,7 @@ function clearResultFilters() {
   elements.maxPrice.value = "";
   elements.vehicleSize.value = "any";
   elements.transmission.value = "any";
+  elements.supplierRating.value = "0";
   elements.features.forEach((input) => {
     input.checked = false;
   });
@@ -675,97 +763,127 @@ function scrollToResults() {
   });
 }
 
-async function loadLocationSuggestions(query) {
-  if (state.suggestionAbort) state.suggestionAbort.abort();
+function getLocationPicker(kind = "pickup") {
+  return kind === "dropoff"
+    ? {
+        input: elements.dropoffLocation,
+        list: elements.dropoffLocationSuggestions,
+        selectedKey: "selectedDropoffLocation",
+        suggestionsKey: "dropoffSuggestions",
+        activeKey: "dropoffActiveSuggestion",
+        abortKey: "dropoffSuggestionAbort"
+      }
+    : {
+        input: elements.location,
+        list: elements.locationSuggestions,
+        selectedKey: "selectedLocation",
+        suggestionsKey: "suggestions",
+        activeKey: "activeSuggestion",
+        abortKey: "suggestionAbort"
+      };
+}
+
+async function loadLocationSuggestions(query, kind = "pickup") {
+  const picker = getLocationPicker(kind);
+  if (state[picker.abortKey]) state[picker.abortKey].abort();
   const cacheKey = query.toLowerCase();
   const cached = state.suggestionCache.get(cacheKey);
   if (cached) {
-    state.suggestions = cached;
-    state.activeSuggestion = -1;
-    renderSuggestions();
+    state[picker.suggestionsKey] = cached;
+    state[picker.activeKey] = -1;
+    renderSuggestions(kind);
     return;
   }
 
-  state.suggestionAbort = new AbortController();
+  state[picker.abortKey] = new AbortController();
 
-  showSuggestionMessage("Searching places...");
+  showSuggestionMessage("Searching places...", kind);
 
   try {
     const response = await fetch(`/api/locations?q=${encodeURIComponent(query)}`, {
-      signal: state.suggestionAbort.signal
+      signal: state[picker.abortKey].signal
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || "Location search failed.");
-    if (elements.location.value.trim() !== query) return;
+    if (picker.input.value.trim() !== query) return;
 
-    state.suggestions = Array.isArray(payload.suggestions) ? payload.suggestions : [];
+    state[picker.suggestionsKey] = Array.isArray(payload.suggestions) ? payload.suggestions : [];
     if (state.suggestionCache.size >= 30) {
       state.suggestionCache.delete(state.suggestionCache.keys().next().value);
     }
-    state.suggestionCache.set(cacheKey, state.suggestions);
-    state.activeSuggestion = -1;
-    renderSuggestions();
+    state.suggestionCache.set(cacheKey, state[picker.suggestionsKey]);
+    state[picker.activeKey] = -1;
+    renderSuggestions(kind);
   } catch (error) {
     if (error.name === "AbortError") return;
-    showSuggestionMessage("No suggestions available.");
+    showSuggestionMessage("No suggestions available.", kind);
   }
 }
 
-function renderSuggestions() {
-  if (!state.suggestions.length) {
-    showSuggestionMessage("No suggested places found.");
+function renderSuggestions(kind = "pickup") {
+  const picker = getLocationPicker(kind);
+  const suggestions = state[picker.suggestionsKey];
+  if (!suggestions.length) {
+    showSuggestionMessage("No suggested places found.", kind);
     return;
   }
 
-  elements.locationSuggestions.innerHTML = state.suggestions.map((suggestion, index) => `
+  picker.list.innerHTML = suggestions.map((suggestion, index) => `
     <button
       class="suggestion-option"
       type="button"
       role="option"
-      aria-selected="${index === state.activeSuggestion}"
+      aria-selected="${index === state[picker.activeKey]}"
       data-suggestion-index="${index}"
+      data-location-kind="${kind}"
     >
       <span>${escapeHtml(suggestion.label)}</span>
       ${suggestion.secondary ? `<small>${escapeHtml(suggestion.secondary)}</small>` : ""}
     </button>
   `).join("");
-  showSuggestions();
+  showSuggestions(kind);
 }
 
-function showSuggestionMessage(message) {
-  elements.locationSuggestions.innerHTML = `<div class="suggestion-message">${escapeHtml(message)}</div>`;
-  showSuggestions();
+function showSuggestionMessage(message, kind = "pickup") {
+  const picker = getLocationPicker(kind);
+  picker.list.innerHTML = `<div class="suggestion-message">${escapeHtml(message)}</div>`;
+  showSuggestions(kind);
 }
 
-function showSuggestions() {
-  elements.locationSuggestions.hidden = false;
-  elements.location.setAttribute("aria-expanded", "true");
+function showSuggestions(kind = "pickup") {
+  const picker = getLocationPicker(kind);
+  picker.list.hidden = false;
+  picker.input.setAttribute("aria-expanded", "true");
 }
 
-function hideSuggestions() {
-  elements.locationSuggestions.hidden = true;
-  elements.location.setAttribute("aria-expanded", "false");
-  state.activeSuggestion = -1;
+function hideSuggestions(kind = "pickup") {
+  const picker = getLocationPicker(kind);
+  picker.list.hidden = true;
+  picker.input.setAttribute("aria-expanded", "false");
+  state[picker.activeKey] = -1;
 }
 
-function chooseSuggestion(index) {
-  const suggestion = state.suggestions[index];
+function chooseSuggestion(index, kind = "pickup") {
+  const picker = getLocationPicker(kind);
+  const suggestion = state[picker.suggestionsKey][index];
   if (!suggestion) return;
 
-  state.selectedLocation = suggestion;
-  elements.location.value = suggestion.label;
-  hideSuggestions();
-  setStatus("Location selected. Search when your dates are ready.", "success");
+  state[picker.selectedKey] = suggestion;
+  picker.input.value = suggestion.label;
+  hideSuggestions(kind);
+  setStatus(`${kind === "dropoff" ? "Drop-off" : "Pickup"} location selected. Search when your dates are ready.`, "success");
 }
 
-function moveSuggestion(direction) {
-  if (elements.locationSuggestions.hidden || !state.suggestions.length) return;
+function moveSuggestion(direction, kind = "pickup") {
+  const picker = getLocationPicker(kind);
+  const suggestions = state[picker.suggestionsKey];
+  if (picker.list.hidden || !suggestions.length) return;
 
-  const last = state.suggestions.length - 1;
-  state.activeSuggestion = Math.min(last, Math.max(0, state.activeSuggestion + direction));
+  const last = suggestions.length - 1;
+  state[picker.activeKey] = Math.min(last, Math.max(0, state[picker.activeKey] + direction));
 
-  [...elements.locationSuggestions.querySelectorAll(".suggestion-option")].forEach((button, index) => {
-    const active = index === state.activeSuggestion;
+  [...picker.list.querySelectorAll(".suggestion-option")].forEach((button, index) => {
+    const active = index === state[picker.activeKey];
     button.setAttribute("aria-selected", String(active));
     if (active) button.scrollIntoView({ block: "nearest" });
   });
@@ -797,7 +915,6 @@ async function showCarDetails(id) {
       car = await refreshSavedQuote(car, refreshController.signal);
     } catch (error) {
       if (error.name !== "AbortError" && state.activeDetailId === id) {
-        if (!error.analyticsReported) sendAnalytics("saved_quote_check_failed");
         renderDetails(findCarById(id) || car, null, error.message || "Unable to recheck this saved quote.");
       }
       return;
@@ -851,10 +968,7 @@ async function refreshSavedQuote(savedCar, signal) {
   const context = savedCar.searchRequest;
   if (hasPickupPassed(context)) {
     updateSavedAvailability(savedCar, "expired");
-    sendAnalytics("saved_quote_expired");
-    const error = new Error("The pickup date for this saved quote has passed. The original quote is shown below.");
-    error.analyticsReported = true;
-    throw error;
+    throw new Error("The pickup date for this saved quote has passed. The original quote is shown below.");
   }
 
   const response = await fetch("/api/cars", {
@@ -880,10 +994,7 @@ async function refreshSavedQuote(savedCar, signal) {
 
   if (!refreshed) {
     updateSavedAvailability(savedCar, "unavailable", checkedAt);
-    sendAnalytics("saved_quote_unavailable");
-    const error = new Error("This car is no longer available for the saved trip. The original quote is shown below.");
-    error.analyticsReported = true;
-    throw error;
+    throw new Error("This car is no longer available for the saved trip. The original quote is shown below.");
   }
 
   refreshed.previousPrice = savedCar.totalPrice;
@@ -891,7 +1002,6 @@ async function refreshSavedQuote(savedCar, signal) {
   refreshed.priceChangedAt = refreshed.priceChange ? checkedAt : "";
   state.saved.set(savedCar.id, createSavedCar(refreshed));
   persistSavedCars();
-  sendAnalytics("saved_quote_active", { currency: refreshed.currency });
   if (refreshed.quoteId) state.detailCache.delete(refreshed.quoteId);
   if (state.savedOnly) render();
   return refreshed;
@@ -957,6 +1067,7 @@ function renderDetails(car, quote = null, status = "") {
         ${renderPriceCut(car, "detail-price-cut")}
         <p class="detail-price">${escapeHtml(total)}</p>
         <p>${money(car.dailyPrice, car.currency)} per day &middot; priced for ${escapeHtml(formatCountry(car.fromCountry))}</p>
+        ${renderAccountDiscountNote()}
       </section>
       <section>
         <h4>Supplier</h4>
@@ -965,6 +1076,7 @@ function renderDetails(car, quote = null, status = "") {
         ${quote?.supplier?.locationType ? `<p>${escapeHtml(quote.supplier.locationType)}</p>` : ""}
       </section>
     </div>
+    ${renderBookingHandoff(car)}
     ${renderQuoteTrip(quote)}
     ${renderDetailList("Included and vehicle", included)}
     ${renderDetailList("Price notes", pricingNotes)}
@@ -974,7 +1086,22 @@ function renderDetails(car, quote = null, status = "") {
     ${renderDetailList("Important information", quote?.importantInfo || [])}
     ${renderQuoteWarnings(quote?.warnings)}
     ${renderTermsLink(quote?.termsUrl)}
-    ${quote ? `<p class="detail-footnote">This provider supplies quote review and rental-terms data, but no vehicle checkout URL. Confirm availability and price again before paying.</p>` : ""}
+    ${quote ? `<p class="detail-footnote">Booking.com performs the final live availability and price check before payment. If the result has changed, review the new price and terms before continuing.</p>` : ""}
+  `;
+}
+
+function renderBookingHandoff(car) {
+  const button = renderBookingButton(car, "detail-booking-button");
+  if (!button) return "";
+
+  return `
+    <section class="booking-handoff">
+      <div>
+        <strong>Continue with this quote on Booking.com</strong>
+        <p>Uses the same vehicle result, trip details, currency and ${escapeHtml(formatCountry(car.fromCountry))} renter market.</p>
+      </div>
+      ${button}
+    </section>
   `;
 }
 
@@ -1182,9 +1309,6 @@ function toggleSaved(id) {
   }
 
   const persisted = persistSavedCars();
-  sendAnalytics(removing ? "car_unsaved" : "car_saved", {
-    currency: liveCar?.currency || savedCar?.currency || ""
-  });
   render();
   setStatus(
     removing
@@ -1226,7 +1350,9 @@ function createSavedCar(car) {
     seats: car.seats,
     doors: car.doors,
     pickup: car.pickup,
+    dropoff: car.dropoff,
     imageUrl: car.imageUrl,
+    bookingUrl: car.bookingUrl,
     fromCountry: car.fromCountry,
     priceComparison: car.priceComparison,
     searchRequest: createSavedSearchContext(car),
@@ -1262,15 +1388,6 @@ function setStatus(message, type = "") {
   elements.apiStatus.dataset.type = type;
 }
 
-function sendAnalytics(type, metadata = {}) {
-  fetch("/api/events", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ type, metadata }),
-    keepalive: true
-  }).catch(() => {});
-}
-
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (char) => ({
     "&": "&amp;",
@@ -1285,6 +1402,15 @@ function safeUrl(value) {
   try {
     const url = new URL(String(value || ""));
     return url.protocol === "https:" ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
+function safeBookingUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return url.protocol === "https:" && url.hostname === "cars.booking.com" ? url.href : "";
   } catch {
     return "";
   }
@@ -1341,37 +1467,60 @@ elements.searchForm.addEventListener("submit", (event) => {
   fetchLiveCars();
 });
 
-elements.location.addEventListener("input", () => {
-  const query = elements.location.value.trim();
-  state.selectedLocation = state.selectedLocation?.label === query ? state.selectedLocation : null;
+function bindLocationPicker(kind) {
+  const picker = getLocationPicker(kind);
+  picker.input.addEventListener("input", () => {
+    const query = picker.input.value.trim();
+    state[picker.selectedKey] = state[picker.selectedKey]?.label === query
+      ? state[picker.selectedKey]
+      : null;
 
-  clearTimeout(suggestionTimer);
-  if (query.length < 2) {
-    hideSuggestions();
-    return;
+    hideSuggestions(kind === "pickup" ? "dropoff" : "pickup");
+    clearTimeout(suggestionTimers[kind]);
+    if (query.length < 2) {
+      hideSuggestions(kind);
+      return;
+    }
+
+    suggestionTimers[kind] = window.setTimeout(() => loadLocationSuggestions(query, kind), 260);
+  });
+
+  picker.input.addEventListener("keydown", (event) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      moveSuggestion(1, kind);
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      moveSuggestion(-1, kind);
+    }
+
+    if (event.key === "Enter" && state[picker.activeKey] >= 0) {
+      event.preventDefault();
+      chooseSuggestion(state[picker.activeKey], kind);
+    }
+
+    if (event.key === "Escape") hideSuggestions(kind);
+  });
+}
+
+bindLocationPicker("pickup");
+bindLocationPicker("dropoff");
+
+function syncDifferentDropoffField(focus = false) {
+  const enabled = elements.differentDropoff.checked;
+  elements.dropoffLocationField.hidden = !enabled;
+  elements.dropoffLocation.disabled = !enabled;
+  if (!enabled) {
+    state.dropoffSuggestionAbort?.abort();
+    hideSuggestions("dropoff");
+  } else if (focus) {
+    elements.dropoffLocation.focus();
   }
+}
 
-  suggestionTimer = window.setTimeout(() => loadLocationSuggestions(query), 260);
-});
-
-elements.location.addEventListener("keydown", (event) => {
-  if (event.key === "ArrowDown") {
-    event.preventDefault();
-    moveSuggestion(1);
-  }
-
-  if (event.key === "ArrowUp") {
-    event.preventDefault();
-    moveSuggestion(-1);
-  }
-
-  if (event.key === "Enter" && state.activeSuggestion >= 0) {
-    event.preventDefault();
-    chooseSuggestion(state.activeSuggestion);
-  }
-
-  if (event.key === "Escape") hideSuggestions();
-});
+elements.differentDropoff.addEventListener("change", () => syncDifferentDropoffField(true));
 
 [elements.pickupDate, elements.pickupTime, elements.returnDate, elements.returnTime].forEach((input) => {
   input.addEventListener("change", render);
@@ -1379,7 +1528,7 @@ elements.location.addEventListener("keydown", (event) => {
 
 elements.maxPrice.addEventListener("input", render);
 
-[elements.vehicleSize, elements.transmission, elements.sort, ...elements.features, ...elements.countries].forEach((input) => {
+[elements.vehicleSize, elements.transmission, elements.supplierRating, elements.sort, ...elements.features, ...elements.countries].forEach((input) => {
   input.addEventListener("change", render);
 });
 
@@ -1389,11 +1538,17 @@ document.addEventListener("click", (event) => {
   const detailButton = event.target.closest("[data-detail]");
 
   if (suggestionButton) {
-    chooseSuggestion(Number(suggestionButton.dataset.suggestionIndex));
+    chooseSuggestion(
+      Number(suggestionButton.dataset.suggestionIndex),
+      suggestionButton.dataset.locationKind || "pickup"
+    );
     return;
   }
 
-  if (!event.target.closest(".location-field")) hideSuggestions();
+  if (!event.target.closest(".location-field")) {
+    hideSuggestions("pickup");
+    hideSuggestions("dropoff");
+  }
   if (saveButton) toggleSaved(saveButton.dataset.save);
   if (detailButton) showCarDetails(detailButton.dataset.detail);
 });
