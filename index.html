@@ -94,16 +94,26 @@
               <input id="maxPriceInput" type="number" min="25" step="25" placeholder="No limit">
             </label>
             <label class="field">
-              <span>Vehicle size</span>
+              <span>Car category</span>
               <select id="vehicleSizeInput">
-                <option value="any" selected>Any size</option>
-                <option value="mini_economy">Mini / Economy</option>
-                <option value="compact">Compact</option>
-                <option value="intermediate_standard">Intermediate / Standard</option>
-                <option value="fullsize">Full-size</option>
-                <option value="suv_crossover">SUV / Crossover</option>
-                <option value="van">People carrier / Van</option>
-                <option value="premium_luxury">Premium / Luxury</option>
+                <option value="any" selected>Any category</option>
+                <option value="small">Small</option>
+                <option value="medium">Medium</option>
+                <option value="large">Large</option>
+                <option value="estate">Estate</option>
+                <option value="premium">Premium</option>
+                <option value="carriers">People carriers</option>
+                <option value="suvs">SUVs</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Pick-up location</span>
+              <select id="pickupLocationTypeInput">
+                <option value="any" selected>Any pickup location</option>
+                <option value="DOWNTOWN">City centre</option>
+                <option value="TRAINSTATION">Train station</option>
+                <option value="SHUTTLE_BUS">Shuttle bus</option>
+                <option value="IN_TERMINAL">In terminal</option>
               </select>
             </label>
             <label class="field">
