@@ -13,7 +13,7 @@ export {
 } from "./providers/booking-com18.js";
 
 const root = resolve(fileURLToPath(new URL(".", import.meta.url)));
-const maxOffersPerMarket = 250;
+const maxOffersPerMarket = 500;
 const maxRenterMarkets = 7;
 const quoteLifetimeMs = 30 * 60 * 1000;
 const maxCachedQuotes = 2000;

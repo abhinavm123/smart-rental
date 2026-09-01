@@ -8,7 +8,8 @@ Smart Rental searches car-rental providers through a small provider-adapter laye
 - The Node server calls `/car/auto-complete` and returns provider location IDs.
 - A search calls `/car/search` once per selected `countryFlag`, with identical locations, dates, exact driver age, language, and currency. One-way searches include the selected `dropOffId`; driver ages from 18–99 are validated and passed through to provider pricing and Booking.com links.
 - Results are normalized and matched by vehicle, category, supplier, and pickup address before their prices are compared.
-- Results can be filtered locally by supplier review score (7+, 8+, or 9+) without making another provider request.
+- Results can be filtered locally using Booking.com's car categories (Small, Medium, Large, Estate, Premium, People carriers, or SUVs), pickup-location types (City centre, Train station, Shuttle bus, or In terminal), and supplier review score (7+, 8+, or 9+) without making another provider request. Choosing a suggestion labelled City Centre/Center selects the City centre depot filter automatically.
+- Up to 500 offers per renter market are retained so price sorting does not discard most city-centre inventory before local filtering.
 - Each result gets an opaque, short-lived quote ID. Opening **Review live quote** loads `/car/detail`, `/car/packages`, and `/car/booking-summary` on the server using the matching vehicle ID and search key.
 - Each current result also gets a **Check latest price on Booking.com** link built from its fresh vehicle ID, trip, currency and winning renter market. Booking.com performs the final availability and price check.
 - Quote cards note that Booking.com may apply further vehicle discounts based on the customer's account level; these are only confirmed on Booking.com.

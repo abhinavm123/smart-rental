@@ -221,6 +221,7 @@ export function normalizeProviderOffer(rawOffer, market, body = {}) {
   const vehicle = rawOffer?.vehicle_info || {};
   const supplierInfo = rawOffer?.supplier_info || {};
   const contentSupplier = rawOffer?.content?.supplier || {};
+  const pickupRoute = rawOffer?.route_info?.pickup || {};
   const pricing = rawOffer?.pricing_info || {};
   const totalPrice = positiveNumber(pricing.drive_away_price) || positiveNumber(pricing.price);
   if (!totalPrice) return null;
@@ -228,7 +229,7 @@ export function normalizeProviderOffer(rawOffer, market, body = {}) {
   const name = String(vehicle.v_name || rawOffer.vehicle_name || "Rental car");
   const category = String(vehicle.group || vehicle.label || "Car");
   const supplier = String(supplierInfo.name || contentSupplier.name || "Supplier");
-  const pickup = String(supplierInfo.address || rawOffer.pickup_location || body.location || "Pickup location");
+  const pickup = String(pickupRoute.address || supplierInfo.address || rawOffer.pickup_location || body.location || "Pickup location");
   const vehicleCode = String(vehicle.sipp || vehicle.sipp_code || rawOffer.sipp_code || "");
   const vehicleId = String(vehicle.v_id || rawOffer.vehicle_id || "").trim();
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(vehicleId)) return null;
@@ -270,10 +271,16 @@ export function normalizeProviderOffer(rawOffer, market, body = {}) {
     seats: Number(vehicle.seats) || 0,
     doors: Number(vehicle.doors) || 0,
     pickup,
+    pickupLocationType: normalizeDepotLocationType(pickupRoute.location_type),
     imageUrl: String(vehicle.image_url || vehicle.image_thumbnail_url || rawOffer.image_url || ""),
     vehicleId,
     fromCountry: market
   };
+}
+
+function normalizeDepotLocationType(value) {
+  const type = String(value || "").trim().toUpperCase();
+  return ["DOWNTOWN", "TRAINSTATION", "SHUTTLE_BUS", "IN_TERMINAL"].includes(type) ? type : "";
 }
 
 function findVehicleSpec(offer, token) {

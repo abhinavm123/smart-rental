@@ -56,6 +56,12 @@ function offer(price, baseCurrency, basePrice = price) {
       name: "Budget",
       address: "Central New York"
     },
+    route_info: {
+      pickup: {
+        address: "Central New York",
+        location_type: "DOWNTOWN"
+      }
+    },
     pricing_info: {
       price,
       currency: "GBP",
@@ -83,6 +89,14 @@ test("serves the app and validates search requests locally", async (context) => 
   const pageHtml = await page.text();
   assert.match(pageHtml, /Smart Rental/);
   assert.match(pageHtml, /supplierRatingInput/);
+  assert.match(pageHtml, /<span>Car category<\/span>/);
+  for (const category of ["Small", "Medium", "Large", "Estate", "Premium", "People carriers", "SUVs"]) {
+    assert.match(pageHtml, new RegExp(`>${category}<\\/option>`));
+  }
+  assert.match(pageHtml, /id="pickupLocationTypeInput"/);
+  for (const pickupType of ["City centre", "Train station", "Shuttle bus", "In terminal"]) {
+    assert.match(pageHtml, new RegExp(`>${pickupType}<\\/option>`));
+  }
   assert.match(pageHtml, /id="driverAgeInput"[^>]*required/);
   assert.equal((pageHtml.match(/class="countryInput"[^>]*checked/g) || []).length, 7);
 
@@ -149,6 +163,7 @@ test("normalizes a booking-com18 rental offer", () => {
   assert.equal(normalized.discountLabel, "12% discount applied");
   assert.equal(normalized.dailyPrice, 189.69 / 4);
   assert.equal(normalized.cancellation, "free cancellation");
+  assert.equal(normalized.pickupLocationType, "DOWNTOWN");
   assert.equal(normalized.fromCountry, "gb");
 
   const oneWay = normalizeProviderOffer(discountedOffer, "gb", {
@@ -209,6 +224,24 @@ test("matches offers across countries and keeps the cheapest market", () => {
   assert.deepEqual(result.meta.markets, ["us", "gb", "it"]);
   assert.equal(result.meta.sourceOfferCount, 3);
   assert.equal(result.meta.offerCount, 1);
+});
+
+test("retains more than 250 offers so city depots are not discarded", () => {
+  const offers = Array.from({ length: 300 }, (_, index) => {
+    const item = offer(100 + index, "GBP");
+    item.vehicle_info.v_id = `vehicle-${index}`;
+    item.vehicle_info.v_name = `Car ${index}`;
+    item.supplier_info.address = `Depot ${index}`;
+    item.route_info.pickup.address = `Depot ${index}`;
+    return item;
+  });
+
+  const result = combineMarketResults([
+    { market: "gb", payload: { data: { search_key: "gb-key", search_results: offers } } }
+  ], [], trip);
+
+  assert.equal(result.meta.sourceOfferCount, 300);
+  assert.equal(result.meta.offerCount, 300);
 });
 
 test("selects a rental provider and supports compatible endpoint overrides", () => {

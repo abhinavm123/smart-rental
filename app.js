@@ -14,6 +14,7 @@ const elements = {
   currency: document.querySelector("#currencyInput"),
   maxPrice: document.querySelector("#maxPriceInput"),
   vehicleSize: document.querySelector("#vehicleSizeInput"),
+  pickupLocationType: document.querySelector("#pickupLocationTypeInput"),
   transmission: document.querySelector("#transmissionInput"),
   supplierRating: document.querySelector("#supplierRatingInput"),
   features: [...document.querySelectorAll(".featureInput")],
@@ -60,13 +61,13 @@ const state = {
 const suggestionTimers = { pickup: 0, dropoff: 0 };
 
 const vehicleSizeLabels = {
-  mini_economy: "Mini / Economy",
-  compact: "Compact",
-  intermediate_standard: "Intermediate / Standard",
-  fullsize: "Full-size",
-  suv_crossover: "SUV / Crossover",
-  van: "People carrier / Van",
-  premium_luxury: "Premium / Luxury"
+  small: "Small",
+  medium: "Medium",
+  large: "Large",
+  estate: "Estate",
+  premium: "Premium",
+  carriers: "People carriers",
+  suvs: "SUVs"
 };
 
 setDefaultDates();
@@ -103,6 +104,7 @@ function getFilters() {
   return {
     maxPrice: Number.isFinite(maxPrice) && maxPrice > 0 ? maxPrice : Infinity,
     vehicleSize: elements.vehicleSize.value,
+    pickupLocationType: elements.pickupLocationType.value,
     transmission: elements.transmission.value,
     minimumSupplierRating: Number(elements.supplierRating.value) || 0,
     features: elements.features.filter((input) => input.checked).map((input) => input.value)
@@ -175,12 +177,15 @@ function money(value, currency = state.currency) {
 function matchesCar(car, filters) {
   const featureMatch = filters.features.every((feature) => hasFeature(car, feature));
   const sizeMatch = filters.vehicleSize === "any" || car.vehicleSize === filters.vehicleSize;
+  const pickupMatch = filters.pickupLocationType === "any"
+    || car.pickupLocationType === filters.pickupLocationType;
   const transmissionMatch = filters.transmission === "any" || car.transmission === filters.transmission;
   const ratingMatch = car.supplierRating >= filters.minimumSupplierRating;
 
   return (
     car.totalPrice <= filters.maxPrice &&
     sizeMatch &&
+    pickupMatch &&
     transmissionMatch &&
     ratingMatch &&
     featureMatch
@@ -288,6 +293,7 @@ function renderCard(car) {
         ${renderRentalRoute(car)}
         <div class="chips">
           <span class="chip">${escapeHtml(getVehicleSizeLabel(car.vehicleSize))}</span>
+          ${car.pickupLocationType ? `<span class="chip">${escapeHtml(formatPickupLocationType(car.pickupLocationType))}</span>` : ""}
           <span class="chip">${escapeHtml(formatTerm(car.transmission))}</span>
           <span class="chip">${escapeHtml(formatTerm(car.mileage))}</span>
           <span class="chip">${escapeHtml(formatTerm(car.cancellation))}</span>
@@ -475,6 +481,7 @@ function normalizeCar(item, index) {
     category,
     similarLabel: String(item?.similarLabel || ""),
     vehicleSize: classifyVehicleSize({ name, category, code: vehicleCode }),
+    pickupLocationType: normalizePickupLocationType(item?.pickupLocationType),
     supplier: String(item?.supplier || "Supplier"),
     supplierLogoUrl: safeUrl(item?.supplierLogoUrl),
     supplierRating: Number(item?.supplierRating) || 0,
@@ -669,14 +676,14 @@ function classifyVehicleSize(car) {
   if (codeClass) return codeClass;
 
   const text = `${car.category || ""} ${car.name || ""}`.toLowerCase();
-  if (/\b(suv|crossover|4x4|sport utility|off road|off-road)\b/.test(text)) return "suv_crossover";
-  if (/\b(van|minivan|people carrier|passenger van|mpv|monospace)\b/.test(text)) return "van";
-  if (/\b(premium|luxury|executive|prestige)\b/.test(text)) return "premium_luxury";
-  if (/\b(full[-\s]?size|large)\b/.test(text)) return "fullsize";
-  if (/\b(intermediate|standard|mid[-\s]?size|midsize)\b/.test(text)) return "intermediate_standard";
-  if (/\bcompact\b/.test(text)) return "compact";
-  if (/\b(mini|economy|city|small)\b/.test(text)) return "mini_economy";
-  return "intermediate_standard";
+  if (/\b(estate|station wagon|wagon)\b/.test(text)) return "estate";
+  if (/\b(suv|crossover|4x4|sport utility|off road|off-road)\b/.test(text)) return "suvs";
+  if (/\b(van|minivan|people carrier|passenger van|mpv|monospace)\b/.test(text)) return "carriers";
+  if (/\b(premium|luxury|executive|prestige)\b/.test(text)) return "premium";
+  if (/\b(full[-\s]?size|large|oversize)\b/.test(text)) return "large";
+  if (/\b(intermediate|standard|mid[-\s]?size|midsize|medium)\b/.test(text)) return "medium";
+  if (/\b(mini|economy|compact|city|small)\b/.test(text)) return "small";
+  return "medium";
 }
 
 function classifyVehicleCode(code) {
@@ -684,20 +691,34 @@ function classifyVehicleCode(code) {
   if (!value) return "";
 
   const bodyType = value[1];
-  if (["F", "G", "J"].includes(bodyType)) return "suv_crossover";
-  if (["V", "M", "K"].includes(bodyType)) return "van";
+  if (bodyType === "W") return "estate";
+  if (["F", "G", "J"].includes(bodyType)) return "suvs";
+  if (["V", "M", "K"].includes(bodyType)) return "carriers";
 
   const category = value[0];
-  if (["M", "N", "E", "H"].includes(category)) return "mini_economy";
-  if (["C", "D"].includes(category)) return "compact";
-  if (["I", "J", "S", "R"].includes(category)) return "intermediate_standard";
-  if (["F", "G", "O"].includes(category)) return "fullsize";
-  if (["P", "U", "L", "W"].includes(category)) return "premium_luxury";
+  if (["M", "N", "E", "H", "C", "D"].includes(category)) return "small";
+  if (["I", "J", "S", "R"].includes(category)) return "medium";
+  if (["F", "G", "O"].includes(category)) return "large";
+  if (["P", "U", "L", "W"].includes(category)) return "premium";
   return "";
 }
 
 function getVehicleSizeLabel(value) {
   return vehicleSizeLabels[value] || "Vehicle size";
+}
+
+function normalizePickupLocationType(value) {
+  const type = String(value || "").trim().toUpperCase();
+  return ["DOWNTOWN", "TRAINSTATION", "SHUTTLE_BUS", "IN_TERMINAL"].includes(type) ? type : "";
+}
+
+function formatPickupLocationType(value) {
+  return {
+    DOWNTOWN: "City centre",
+    TRAINSTATION: "Train station",
+    SHUTTLE_BUS: "Shuttle bus",
+    IN_TERMINAL: "In terminal"
+  }[value] || "Pickup location";
 }
 
 function getSearchStatus(totalCount, visibleCount, location) {
@@ -732,6 +753,7 @@ function hasActiveFilters() {
   return (
     Boolean(elements.maxPrice.value) ||
     elements.vehicleSize.value !== "any" ||
+    elements.pickupLocationType.value !== "any" ||
     elements.transmission.value !== "any" ||
     elements.supplierRating.value !== "0" ||
     elements.features.some((input) => input.checked) ||
@@ -742,6 +764,7 @@ function hasActiveFilters() {
 function clearResultFilters() {
   elements.maxPrice.value = "";
   elements.vehicleSize.value = "any";
+  elements.pickupLocationType.value = "any";
   elements.transmission.value = "any";
   elements.supplierRating.value = "0";
   elements.features.forEach((input) => {
@@ -870,6 +893,11 @@ function chooseSuggestion(index, kind = "pickup") {
 
   state[picker.selectedKey] = suggestion;
   picker.input.value = suggestion.label;
+  if (kind === "pickup") {
+    elements.pickupLocationType.value = /\bcity cent(?:re|er)\b/i.test(suggestion.label)
+      ? "DOWNTOWN"
+      : "any";
+  }
   hideSuggestions(kind);
   setStatus(`${kind === "dropoff" ? "Drop-off" : "Pickup"} location selected. Search when your dates are ready.`, "success");
 }
@@ -1350,6 +1378,7 @@ function createSavedCar(car) {
     seats: car.seats,
     doors: car.doors,
     pickup: car.pickup,
+    pickupLocationType: car.pickupLocationType,
     dropoff: car.dropoff,
     imageUrl: car.imageUrl,
     bookingUrl: car.bookingUrl,
@@ -1528,7 +1557,7 @@ elements.differentDropoff.addEventListener("change", () => syncDifferentDropoffF
 
 elements.maxPrice.addEventListener("input", render);
 
-[elements.vehicleSize, elements.transmission, elements.supplierRating, elements.sort, ...elements.features, ...elements.countries].forEach((input) => {
+[elements.vehicleSize, elements.pickupLocationType, elements.transmission, elements.supplierRating, elements.sort, ...elements.features, ...elements.countries].forEach((input) => {
   input.addEventListener("change", render);
 });
 
