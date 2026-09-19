@@ -2,6 +2,18 @@
 
 Smart Rental searches car-rental providers through a small provider-adapter layer. The included `booking-com18` adapter uses RapidAPI, runs the same trip search for each selected renter market, keeps the cheapest matching supplier/vehicle offer, and shows the price spread between markets.
 
+## Preview
+
+![Smart Rental desktop search interface](docs/screenshots/smart-rental-desktop.png)
+
+<details>
+<summary>View the mobile layout</summary>
+
+<br>
+<img src="docs/screenshots/smart-rental-mobile.png" alt="Smart Rental mobile search interface" width="430">
+
+</details>
+
 ## How it works
 
 - The browser requests rental locations from `/api/locations`.
