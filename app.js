@@ -40,7 +40,7 @@ const elements = {
   detailClose: document.querySelector("#detailCloseButton")
 };
 
-const maxRenterMarkets = 10;
+const maxRenterMarkets = 7;
 
 const state = {
   cars: [],
@@ -760,16 +760,11 @@ function formatCountry(value) {
   const labels = {
     uk: "UK",
     gb: "UK",
-    bg: "Bulgaria",
-    cz: "Czechia",
-    ee: "Estonia",
-    hr: "Croatia",
-    hu: "Hungary",
-    jp: "Japan",
-    kr: "South Korea",
-    pl: "Poland",
-    ro: "Romania",
-    se: "Sweden",
+    ca: "Canada",
+    de: "Germany",
+    es: "Spain",
+    fr: "France",
+    it: "Italy",
     us: "US"
   };
 
