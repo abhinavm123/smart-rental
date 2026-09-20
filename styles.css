@@ -248,16 +248,60 @@ button:focus-visible {
 }
 
 .country-group {
-  grid-template-columns: auto repeat(6, minmax(74px, 1fr));
-  align-items: center;
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fbfdfb;
 }
 
+.market-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.market-toolbar span {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: .82rem;
+  font-weight: 700;
+}
+
+.market-action {
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--green-dark);
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.market-action:hover {
+  border-color: #9bcbb9;
+  background: #e3f3ed;
+}
+
+.country-options {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(110px, 1fr));
+  gap: 4px 12px;
+  max-height: 190px;
+  overflow-y: auto;
+  padding: 6px 2px;
+  scrollbar-gutter: stable;
+}
+
+.market-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: .78rem;
+}
+
 .toggle-group label,
-.country-group label {
+.country-options label {
   display: inline-flex;
   align-items: center;
   gap: 9px;
@@ -266,7 +310,7 @@ button:focus-visible {
 }
 
 .toggle-group input,
-.country-group input {
+.country-options input {
   width: 18px;
   min-height: 18px;
   accent-color: var(--green);
@@ -947,12 +991,8 @@ button:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .country-group {
+  .country-options {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .country-group legend {
-    grid-column: 1 / -1;
   }
 
   .listing-card {
@@ -1007,7 +1047,6 @@ button:focus-visible {
   .options-row,
   .search-actions,
   .toggle-group,
-  .country-group,
   .results-header,
   .detail-grid {
     grid-template-columns: 1fr;
@@ -1016,6 +1055,10 @@ button:focus-visible {
 
   .toggle-group {
     align-items: start;
+  }
+
+  .country-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .listing-card {

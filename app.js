@@ -19,6 +19,9 @@ const elements = {
   supplierRating: document.querySelector("#supplierRatingInput"),
   features: [...document.querySelectorAll(".featureInput")],
   countries: [...document.querySelectorAll(".countryInput")],
+  marketSelectionCount: document.querySelector("#marketSelectionCount"),
+  selectAllMarkets: document.querySelector("#selectAllMarketsButton"),
+  clearAllMarkets: document.querySelector("#clearAllMarketsButton"),
   sort: document.querySelector("#sortInput"),
   fetchApi: document.querySelector("#fetchApiButton"),
   apiStatus: document.querySelector("#apiStatus"),
@@ -36,6 +39,8 @@ const elements = {
   detailBody: document.querySelector("#detailBody"),
   detailClose: document.querySelector("#detailCloseButton")
 };
+
+const maxRenterMarkets = 44;
 
 const state = {
   cars: [],
@@ -220,6 +225,7 @@ function hasFeature(car, feature) {
 }
 
 function render() {
+  updateMarketSelectionCount();
   const filters = getFilters();
   const sourceCars = state.savedOnly ? getSavedCarsForDisplay() : state.cars;
   const filtered = (
@@ -551,7 +557,7 @@ function normalizeSearchContext(value) {
       ? String(value.currency).toUpperCase()
       : "GBP",
     fromCountries: Array.isArray(value.fromCountries)
-      ? value.fromCountries.map(String).slice(0, 7)
+      ? value.fromCountries.map(String).slice(0, maxRenterMarkets)
       : ["gb"]
   };
 }
@@ -570,7 +576,10 @@ function renderCountryComparison(car) {
   const spread = Number(comparison.spread) || 0;
 
   if (spread <= 0) {
-    return `<p class="country-comparison">Same price across ${escapeHtml(checkedCountries)}.</p>`;
+    const marketLabel = countries.length > 5
+      ? `${countries.length} checked markets`
+      : checkedCountries;
+    return `<p class="country-comparison">Same price across ${escapeHtml(marketLabel)}.</p>`;
   }
 
   return `<p class="country-comparison">Cheapest when priced for ${escapeHtml(formatCountry(car.fromCountry))}; saves ${escapeHtml(money(spread, car.currency))} vs the highest checked country.</p>`;
@@ -634,6 +643,7 @@ function formatCheckedTime(value) {
 function getSourceLabel(payload) {
   const countries = payload?.meta?.markets;
   if (Array.isArray(countries) && countries.length > 1) {
+    if (countries.length > 5) return `Compared ${countries.length} renter markets`;
     return `Compared ${countries.map(formatCountry).join(", ")}`;
   }
 
@@ -734,16 +744,65 @@ function getSelectedCountries() {
     .map((input) => input.value);
 }
 
+function updateMarketSelectionCount() {
+  const selectedCount = getSelectedCountries().length;
+  elements.marketSelectionCount.textContent = `${selectedCount} of ${elements.countries.length} selected`;
+}
+
+function setAllMarkets(checked) {
+  elements.countries.forEach((input) => {
+    input.checked = checked;
+  });
+  render();
+}
+
 function formatCountry(value) {
   const labels = {
     uk: "UK",
     gb: "UK",
     us: "US",
-    it: "Italy",
+    ar: "Argentina",
+    bg: "Bulgaria",
+    br: "Brazil",
+    ca: "Canada",
+    cn: "China",
+    cz: "Czechia",
     de: "Germany",
+    dk: "Denmark",
+    ee: "Estonia",
+    fi: "Finland",
     fr: "France",
+    gr: "Greece",
+    hr: "Croatia",
+    hu: "Hungary",
+    id: "Indonesia",
+    il: "Israel",
+    in: "India",
+    is: "Iceland",
+    it: "Italy",
+    jp: "Japan",
+    kr: "South Korea",
+    lt: "Lithuania",
+    lv: "Latvia",
+    mx: "Mexico",
+    my: "Malaysia",
+    nl: "Netherlands",
+    no: "Norway",
+    ph: "Philippines",
+    pl: "Poland",
+    pt: "Portugal",
+    ro: "Romania",
+    rs: "Serbia",
+    ru: "Russia",
+    sa: "Saudi Arabia",
+    se: "Sweden",
+    si: "Slovenia",
+    sk: "Slovakia",
     es: "Spain",
-    ca: "Canada"
+    th: "Thailand",
+    tr: "Türkiye",
+    ua: "Ukraine",
+    vn: "Vietnam"
   };
 
   return labels[String(value || "").toLowerCase()] || String(value || "").toUpperCase() || "Default";
@@ -1550,6 +1609,8 @@ function syncDifferentDropoffField(focus = false) {
 }
 
 elements.differentDropoff.addEventListener("change", () => syncDifferentDropoffField(true));
+elements.selectAllMarkets.addEventListener("click", () => setAllMarkets(true));
+elements.clearAllMarkets.addEventListener("click", () => setAllMarkets(false));
 
 [elements.pickupDate, elements.pickupTime, elements.returnDate, elements.returnTime].forEach((input) => {
   input.addEventListener("change", render);
