@@ -14,7 +14,8 @@ export {
 
 const root = resolve(fileURLToPath(new URL(".", import.meta.url)));
 const maxOffersPerMarket = 500;
-const maxRenterMarkets = 7;
+const maxRenterMarkets = 44;
+const maxConcurrentMarketRequests = 6;
 const quoteLifetimeMs = 30 * 60 * 1000;
 const maxCachedQuotes = 2000;
 const quoteCache = new Map();
@@ -201,14 +202,16 @@ async function handleCarsRequest(request, response) {
   }
 
   const markets = getRequestedMarkets(body);
-  const settled = await Promise.allSettled(
-    markets.map((market) => provider.searchCars({
+  const settled = await settleWithConcurrency(
+    markets,
+    maxConcurrentMarketRequests,
+    (market) => provider.searchCars({
       pickupId,
       dropOffId,
       body,
       market,
       config
-    }).then((payload) => ({ market, payload })))
+    }).then((payload) => ({ market, payload }))
   );
 
   const successes = [];
@@ -236,6 +239,27 @@ async function handleCarsRequest(request, response) {
     config
   );
   sendJson(response, 200, result);
+}
+
+export async function settleWithConcurrency(items, concurrency, task) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      try {
+        results[index] = { status: "fulfilled", value: await task(items[index], index) };
+      } catch (reason) {
+        results[index] = { status: "rejected", reason };
+      }
+    }
+  }
+
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
 }
 
 async function handleQuoteDetailsRequest(quoteId, response) {

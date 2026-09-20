@@ -6,7 +6,8 @@ import {
   createAppServer,
   normalizeMarket,
   normalizeProviderOffer,
-  normalizeQuoteDetails
+  normalizeQuoteDetails,
+  settleWithConcurrency
 } from "./server.js";
 import {
   buildBookingUrl,
@@ -98,7 +99,18 @@ test("serves the app and validates search requests locally", async (context) => 
     assert.match(pageHtml, new RegExp(`>${pickupType}<\\/option>`));
   }
   assert.match(pageHtml, /id="driverAgeInput"[^>]*required/);
-  assert.equal((pageHtml.match(/class="countryInput"[^>]*checked/g) || []).length, 7);
+  const renterMarkets = [
+    "ar", "br", "bg", "ca", "cn", "hr", "cz", "dk", "ee", "fi", "fr",
+    "de", "gr", "hu", "is", "in", "id", "il", "it", "jp", "lv", "lt",
+    "my", "mx", "nl", "no", "ph", "pl", "pt", "ro", "ru", "sa", "rs",
+    "sk", "si", "kr", "es", "se", "th", "tr", "gb", "ua", "us", "vn"
+  ];
+  assert.equal((pageHtml.match(/class="countryInput"[^>]*checked/g) || []).length, renterMarkets.length);
+  for (const market of renterMarkets) {
+    assert.match(pageHtml, new RegExp(`class="countryInput"[^>]*value="${market}"[^>]*checked`));
+  }
+  assert.match(pageHtml, /id="selectAllMarketsButton"/);
+  assert.match(pageHtml, /id="clearAllMarketsButton"/);
 
   const envFile = await fetch(`${baseUrl}/.env`);
   assert.equal(envFile.status, 404);
@@ -146,6 +158,27 @@ test("normalizes UK market aliases", () => {
   assert.equal(normalizeMarket("uk"), "gb");
   assert.equal(normalizeMarket("IT"), "it");
   assert.equal(normalizeMarket("invalid"), "");
+});
+
+test("limits simultaneous renter-market requests while preserving result order", async () => {
+  let activeRequests = 0;
+  let highestActiveCount = 0;
+  const items = Array.from({ length: 12 }, (_, index) => index);
+  const results = await settleWithConcurrency(items, 3, async (item) => {
+    activeRequests += 1;
+    highestActiveCount = Math.max(highestActiveCount, activeRequests);
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    activeRequests -= 1;
+    if (item === 5) throw new Error("market unavailable");
+    return item * 2;
+  });
+
+  assert.equal(highestActiveCount, 3);
+  assert.equal(results.length, items.length);
+  assert.deepEqual(results[4], { status: "fulfilled", value: 8 });
+  assert.equal(results[5].status, "rejected");
+  assert.match(results[5].reason.message, /market unavailable/);
+  assert.deepEqual(results[6], { status: "fulfilled", value: 12 });
 });
 
 test("normalizes a booking-com18 rental offer", () => {
