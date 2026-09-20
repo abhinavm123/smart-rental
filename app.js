@@ -40,7 +40,7 @@ const elements = {
   detailClose: document.querySelector("#detailCloseButton")
 };
 
-const maxRenterMarkets = 44;
+const maxRenterMarkets = 10;
 
 const state = {
   cars: [],
@@ -760,49 +760,17 @@ function formatCountry(value) {
   const labels = {
     uk: "UK",
     gb: "UK",
-    us: "US",
-    ar: "Argentina",
     bg: "Bulgaria",
-    br: "Brazil",
-    ca: "Canada",
-    cn: "China",
     cz: "Czechia",
-    de: "Germany",
-    dk: "Denmark",
     ee: "Estonia",
-    fi: "Finland",
-    fr: "France",
-    gr: "Greece",
     hr: "Croatia",
     hu: "Hungary",
-    id: "Indonesia",
-    il: "Israel",
-    in: "India",
-    is: "Iceland",
-    it: "Italy",
     jp: "Japan",
     kr: "South Korea",
-    lt: "Lithuania",
-    lv: "Latvia",
-    mx: "Mexico",
-    my: "Malaysia",
-    nl: "Netherlands",
-    no: "Norway",
-    ph: "Philippines",
     pl: "Poland",
-    pt: "Portugal",
     ro: "Romania",
-    rs: "Serbia",
-    ru: "Russia",
-    sa: "Saudi Arabia",
     se: "Sweden",
-    si: "Slovenia",
-    sk: "Slovakia",
-    es: "Spain",
-    th: "Thailand",
-    tr: "Türkiye",
-    ua: "Ukraine",
-    vn: "Vietnam"
+    us: "US"
   };
 
   return labels[String(value || "").toLowerCase()] || String(value || "").toUpperCase() || "Default";
