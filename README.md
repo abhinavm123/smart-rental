@@ -4,7 +4,7 @@ Smart Rental helps travellers find cheaper car rentals by comparing Booking.com 
 
 ## Preview
 
-![Smart Rental desktop search interface](docs/screenshots/smart-rental-desktop.png)
+![Smart Rental desktop search interface with seven renter markets](docs/screenshots/smart-rental-seven-markets.png)
 
 ## How it works
 
