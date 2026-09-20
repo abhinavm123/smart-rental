@@ -1,6 +1,6 @@
 # Smart Rental
 
-Smart Rental searches car-rental providers through a small provider-adapter layer. The included `booking-com18` adapter uses RapidAPI, runs the same trip search for each selected renter market, keeps the cheapest matching supplier/vehicle offer, and shows the price spread between markets.
+Smart Rental helps travellers find cheaper car rentals by comparing Booking.com prices for the same trip across supported country markets around the world. It repeats an identical search—including the locations, dates, times, driver age, and currency—for every selected renter country, then matches equivalent vehicles by supplier, category, and pickup depot. The results highlight the lowest available price and show the price difference between markets, making it easy to see when Booking.com offers the same rental for less in another country. A server-side provider-adapter layer handles the live RapidAPI searches while keeping API credentials out of the browser.
 
 ## Preview
 
