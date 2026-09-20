@@ -14,7 +14,7 @@ export {
 
 const root = resolve(fileURLToPath(new URL(".", import.meta.url)));
 const maxOffersPerMarket = 500;
-const maxRenterMarkets = 10;
+const maxRenterMarkets = 7;
 const maxConcurrentMarketRequests = 6;
 const quoteLifetimeMs = 30 * 60 * 1000;
 const maxCachedQuotes = 2000;
