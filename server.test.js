@@ -100,10 +100,7 @@ test("serves the app and validates search requests locally", async (context) => 
   }
   assert.match(pageHtml, /id="driverAgeInput"[^>]*required/);
   const renterMarkets = [
-    "ar", "br", "bg", "ca", "cn", "hr", "cz", "dk", "ee", "fi", "fr",
-    "de", "gr", "hu", "is", "in", "id", "il", "it", "jp", "lv", "lt",
-    "my", "mx", "nl", "no", "ph", "pl", "pt", "ro", "ru", "sa", "rs",
-    "sk", "si", "kr", "es", "se", "th", "tr", "gb", "ua", "us", "vn"
+    "cz", "bg", "jp", "kr", "hr", "se", "hu", "pl", "ee", "ro"
   ];
   assert.equal((pageHtml.match(/class="countryInput"[^>]*checked/g) || []).length, renterMarkets.length);
   for (const market of renterMarkets) {

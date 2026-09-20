@@ -82,8 +82,8 @@ Every adapter supplies its own configuration check, location search, pickup reso
 ## Notes
 
 - Keep the display currency fixed when comparing countries; otherwise exchange-rate changes can look like market-price changes.
-- All 44 available renter markets and GBP are selected by default; users can quickly select all markets or remove the ones they do not want to compare.
-- Broad searches are limited to six simultaneous provider requests so adding more markets does not create an uncontrolled request burst.
+- Ten renter markets are selected by default: Czechia, Bulgaria, Japan, South Korea, Croatia, Sweden, Hungary, Poland, Estonia, and Romania. They ranked lowest in a five-destination benchmark of equivalent rentals; the cheapest market for an individual trip can still vary.
+- Searches are limited to six simultaneous provider requests so comparisons do not create an uncontrolled request burst.
 - Driver age is required and must be an exact whole number from 18 to 99 because it can change eligibility and pricing.
 - The provider is an unofficial API that reproduces public Booking.com data. Treat its schema and availability as third-party dependencies and keep fixture tests for the fields the app consumes.
 - Provider calls may consume RapidAPI quota. A search makes one call per selected renter market; the first detail view for a result makes three additional calls. Quote details are cached for 30 minutes.
