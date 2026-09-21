@@ -228,6 +228,7 @@ export function normalizeProviderOffer(rawOffer, market, body = {}) {
 
   const name = String(vehicle.v_name || rawOffer.vehicle_name || "Rental car");
   const category = String(vehicle.group || vehicle.label || "Car");
+  const similarLabel = getSimilarVehicleLabel(vehicle.group_or_similar, category);
   const supplier = String(supplierInfo.name || contentSupplier.name || "Supplier");
   const pickup = String(pickupRoute.address || supplierInfo.address || rawOffer.pickup_location || body.location || "Pickup location");
   const vehicleCode = String(vehicle.sipp || vehicle.sipp_code || rawOffer.sipp_code || "");
@@ -247,7 +248,8 @@ export function normalizeProviderOffer(rawOffer, market, body = {}) {
     matchKey,
     name,
     category,
-    similarLabel: getSimilarVehicleLabel(vehicle.group_or_similar, category),
+    similarLabel,
+    vehicleSize: classifyProviderVehicleSize(vehicle, name, category, similarLabel),
     vehicleCode,
     supplier,
     supplierLogoUrl: String(supplierInfo.logo_url || contentSupplier.imageUrl || ""),
@@ -276,6 +278,18 @@ export function normalizeProviderOffer(rawOffer, market, body = {}) {
     vehicleId,
     fromCountry: market
   };
+}
+
+function classifyProviderVehicleSize(vehicle, name, category, similarLabel) {
+  const text = `${similarLabel} ${vehicle?.label || ""} ${category} ${name}`.toLowerCase();
+  if (/\b(estate|station wagon|wagon)\b/.test(text)) return "estate";
+  if (/\b(suv|crossover|4x4|sport utility|off road|off-road)\b/.test(text)) return "suvs";
+  if (/\b(van|minivan|people carrier|passenger van|mpv|monospace)\b/.test(text)) return "carriers";
+  if (/\b(premium|luxury|executive|prestige)\b/.test(text)) return "premium";
+  if (/\b(full[-\s]?size|large|oversize)\b/.test(text)) return "large";
+  if (/\b(intermediate|standard|mid[-\s]?size|midsize|medium)\b/.test(text)) return "medium";
+  if (/\b(mini|economy|compact|city|small)\b/.test(text)) return "small";
+  return "medium";
 }
 
 function normalizeDepotLocationType(value) {
