@@ -95,7 +95,7 @@ test("serves the app and validates search requests locally", async (context) => 
     assert.match(pageHtml, new RegExp(`>${category}<\\/option>`));
   }
   assert.match(pageHtml, /id="pickupLocationTypeInput"/);
-  for (const pickupType of ["City centre", "Train station", "Shuttle bus", "In terminal"]) {
+  for (const pickupType of ["Airport terminal or shuttle", "City centre", "Train station", "Shuttle bus", "In terminal"]) {
     assert.match(pageHtml, new RegExp(`>${pickupType}<\\/option>`));
   }
   assert.match(pageHtml, /id="driverAgeInput"[^>]*required/);
@@ -194,7 +194,24 @@ test("normalizes a booking-com18 rental offer", () => {
   assert.equal(normalized.dailyPrice, 189.69 / 4);
   assert.equal(normalized.cancellation, "free cancellation");
   assert.equal(normalized.pickupLocationType, "DOWNTOWN");
+  assert.equal(normalized.vehicleSize, "small");
   assert.equal(normalized.fromCountry, "gb");
+
+  const suvOffer = offer(210, "GBP");
+  suvOffer.vehicle_info.v_id = "suv-1";
+  suvOffer.vehicle_info.v_name = "Cupra Formentor";
+  suvOffer.vehicle_info.group = "Intermediate";
+  suvOffer.vehicle_info.label = "Intermediate car with:";
+  suvOffer.vehicle_info.group_or_similar = "or similar SUV";
+  assert.equal(normalizeProviderOffer(suvOffer, "gb", trip).vehicleSize, "suvs");
+
+  const largeOffer = offer(220, "GBP");
+  largeOffer.vehicle_info.v_id = "large-1";
+  largeOffer.vehicle_info.v_name = "Nissan Qashqai";
+  largeOffer.vehicle_info.group = "Standard";
+  largeOffer.vehicle_info.label = "Standard car with:";
+  largeOffer.vehicle_info.group_or_similar = "or similar large car";
+  assert.equal(normalizeProviderOffer(largeOffer, "gb", trip).vehicleSize, "large");
 
   const oneWay = normalizeProviderOffer(discountedOffer, "gb", {
     ...trip,

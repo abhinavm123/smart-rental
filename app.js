@@ -183,7 +183,9 @@ function matchesCar(car, filters) {
   const featureMatch = filters.features.every((feature) => hasFeature(car, feature));
   const sizeMatch = filters.vehicleSize === "any" || car.vehicleSize === filters.vehicleSize;
   const pickupMatch = filters.pickupLocationType === "any"
-    || car.pickupLocationType === filters.pickupLocationType;
+    || (filters.pickupLocationType === "AIRPORT"
+      ? ["IN_TERMINAL", "SHUTTLE_BUS"].includes(car.pickupLocationType)
+      : car.pickupLocationType === filters.pickupLocationType);
   const transmissionMatch = filters.transmission === "any" || car.transmission === filters.transmission;
   const ratingMatch = car.supplierRating >= filters.minimumSupplierRating;
 
@@ -479,14 +481,16 @@ function normalizeCar(item, index) {
   const name = String(item?.name || "Rental car");
   const category = String(item?.category || "Car");
   const vehicleCode = String(item?.vehicleCode || "");
+  const similarLabel = String(item?.similarLabel || "");
   const searchRequest = normalizeSearchContext(item?.searchRequest);
   return {
     ...item,
     id: String(item?.id || `car-${index}`),
     name,
     category,
-    similarLabel: String(item?.similarLabel || ""),
-    vehicleSize: classifyVehicleSize({ name, category, code: vehicleCode }),
+    similarLabel,
+    vehicleSize: normalizeVehicleSize(item?.vehicleSize)
+      || classifyVehicleSize({ name, category, code: vehicleCode, similarLabel }),
     pickupLocationType: normalizePickupLocationType(item?.pickupLocationType),
     supplier: String(item?.supplier || "Supplier"),
     supplierLogoUrl: safeUrl(item?.supplierLogoUrl),
@@ -685,7 +689,7 @@ function classifyVehicleSize(car) {
   const codeClass = classifyVehicleCode(car.code);
   if (codeClass) return codeClass;
 
-  const text = `${car.category || ""} ${car.name || ""}`.toLowerCase();
+  const text = `${car.similarLabel || ""} ${car.category || ""} ${car.name || ""}`.toLowerCase();
   if (/\b(estate|station wagon|wagon)\b/.test(text)) return "estate";
   if (/\b(suv|crossover|4x4|sport utility|off road|off-road)\b/.test(text)) return "suvs";
   if (/\b(van|minivan|people carrier|passenger van|mpv|monospace)\b/.test(text)) return "carriers";
@@ -694,6 +698,13 @@ function classifyVehicleSize(car) {
   if (/\b(intermediate|standard|mid[-\s]?size|midsize|medium)\b/.test(text)) return "medium";
   if (/\b(mini|economy|compact|city|small)\b/.test(text)) return "small";
   return "medium";
+}
+
+function normalizeVehicleSize(value) {
+  const size = String(value || "").trim().toLowerCase();
+  return ["small", "medium", "large", "estate", "premium", "carriers", "suvs"].includes(size)
+    ? size
+    : "";
 }
 
 function classifyVehicleCode(code) {
@@ -916,9 +927,12 @@ function chooseSuggestion(index, kind = "pickup") {
   state[picker.selectedKey] = suggestion;
   picker.input.value = suggestion.label;
   if (kind === "pickup") {
-    elements.pickupLocationType.value = /\bcity cent(?:re|er)\b/i.test(suggestion.label)
-      ? "DOWNTOWN"
-      : "any";
+    const label = suggestion.label;
+    elements.pickupLocationType.value = /\bairport\b/i.test(label)
+      ? "AIRPORT"
+      : /\bcity cent(?:re|er)\b/i.test(label)
+        ? "DOWNTOWN"
+        : "any";
   }
   hideSuggestions(kind);
   setStatus(`${kind === "dropoff" ? "Drop-off" : "Pickup"} location selected. Search when your dates are ready.`, "success");
